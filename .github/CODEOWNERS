@@ -1,0 +1,6 @@
+# Referencia: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# Todo cambio requiere revision del owner del repositorio.
+*                      @copanicaballito-blip
+
+# El propio archivo de owners y los workflows tambien quedan protegidos.
+/.github/              @copanicaballito-blip

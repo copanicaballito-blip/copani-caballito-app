@@ -1,0 +1,39 @@
+# Integracion continua basica para Expo / TypeScript.
+# Mientras no exista package.json, los pasos se omiten y el workflow termina en verde.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        if: hashFiles('package.json') != ''
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+
+      - name: Lint
+        if: hashFiles('package-lock.json') != ''
+        run: npm run lint --if-present
+
+      - name: Chequeo de tipos
+        if: hashFiles('tsconfig.json') != '' && hashFiles('package-lock.json') != ''
+        run: npx tsc --noEmit
+
+      - name: Tests
+        if: hashFiles('package-lock.json') != ''
+        run: npm test --if-present

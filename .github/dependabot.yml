@@ -1,0 +1,9 @@
+# Referencia: https://docs.github.com/en/code-security/dependabot
+# Por ahora solo GitHub Actions: no hay package.json todavia.
+# Al crear el proyecto Expo, agregar el ecosistema "npm" (ver README).
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
