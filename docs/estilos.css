@@ -116,6 +116,8 @@ button.primario { background: var(--marron); border-color: var(--marron); color:
 button.peligro { color: var(--vencido); border-color: var(--vencido); }
 button:disabled { opacity: .6; }
 .error { color: var(--vencido); min-height: 1.2em; margin: 4px 0 8px; font-size: .9rem; }
+.info-login { color: #1b5e20; font-size: .9rem; margin: 0 0 8px; }
+.info-login:empty { display: none; }
 .acciones { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 8px; }
 
 .tarjeta { background: #fff; border: 1px solid var(--borde); border-radius: 14px; padding: 18px; }

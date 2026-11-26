@@ -36,6 +36,9 @@ async function crearNube() {
     salir() {
       return auth.signOut(a);
     },
+    restablecerClave(email) {
+      return auth.sendPasswordResetEmail(a, email);
+    },
     escucharGastos(cb, cbError) {
       return fs.onSnapshot(
         coleccion,
@@ -97,6 +100,7 @@ function crearDemo() {
     },
     async ingresar() {},
     async salir() {},
+    async restablecerClave() {},
     escucharGastos(cb) {
       oyentes.add(cb);
       cb(copia());

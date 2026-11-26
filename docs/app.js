@@ -108,24 +108,48 @@ function pintarLogin() {
         <input type="password" name="clave" autocomplete="current-password" required>
       </label>
       <p class="error" id="error-login" role="alert"></p>
+      <p class="info-login" id="info-login" role="status"></p>
       <button class="primario" style="width:100%">Ingresar</button>
+      <p style="text-align:center;margin:12px 0 0"><button type="button" id="btn-olvide" class="enlace">Olvidé mi contraseña</button></p>
     </form>`;
   $("#form-login").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const f = ev.target;
     const error = $("#error-login");
     error.textContent = "";
+    $("#info-login").textContent = "";
     if (!f.email.value.trim() || !f.clave.value) {
       error.textContent = "Escribí tu email y tu contraseña.";
       return;
     }
-    const boton = f.querySelector("button");
+    const boton = f.querySelector("button.primario");
     boton.disabled = true;
     try {
       await datos.ingresar(f.email.value.trim(), f.clave.value);
     } catch (e) {
+      console.error(e);
       error.textContent = mensajeLogin(e);
       boton.disabled = false;
+    }
+  });
+
+  // "Olvidé mi contraseña": Firebase manda un correo para crear una nueva.
+  $("#btn-olvide").addEventListener("click", async () => {
+    const email = $("#form-login").email.value.trim();
+    const error = $("#error-login");
+    const info = $("#info-login");
+    error.textContent = "";
+    info.textContent = "";
+    if (!email) {
+      error.textContent = "Escribí tu email arriba y volvé a tocar “Olvidé mi contraseña”.";
+      return;
+    }
+    try {
+      await datos.restablecerClave(email);
+      info.textContent = "Listo. Si ese email tiene una cuenta, te enviamos un correo para crear una contraseña nueva. Revisá también la carpeta de spam.";
+    } catch (e) {
+      console.error(e);
+      error.textContent = mensajeLogin(e);
     }
   });
 }
@@ -137,25 +161,42 @@ function mensajeLogin(e) {
     case "auth/user-not-found":
       return "Email o contraseña incorrectos.";
     case "auth/invalid-email":
+    case "auth/missing-email":
       return "El email no es válido.";
     case "auth/too-many-requests":
       return "Demasiados intentos. Esperá unos minutos y probá de nuevo.";
     case "auth/network-request-failed":
       return "No hay conexión. Probá de nuevo.";
+    case "auth/operation-not-allowed":
+      return "El ingreso con email y contraseña no está activado en Firebase (Authentication → Sign-in method).";
+    case "auth/user-disabled":
+      return "Esta cuenta está deshabilitada en Firebase.";
+    case "auth/unauthorized-domain":
+      return "Este sitio no está autorizado en Firebase (Authentication → Configuración → Dominios autorizados).";
+    case "auth/invalid-api-key":
+    case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
+      return "La configuración de Firebase de la app no es válida.";
     default:
-      return "No se pudo ingresar. Probá de nuevo.";
+      // Se muestra el código técnico para poder diagnosticar el problema.
+      return `No se pudo ingresar (${e?.code ?? e?.message ?? "error desconocido"}). Probá de nuevo.`;
   }
 }
 
 function pintarError() {
   cerrarDialogos();
   const sinPermiso = errorNube?.code === "permission-denied";
-  contenido.innerHTML = `
+  contenido.innerHTML = sinPermiso
+    ? `
     <div class="tarjeta">
-      <h2>${sinPermiso ? "Cuenta no autorizada" : "No se pudieron cargar los gastos"}</h2>
-      <p>${sinPermiso
-        ? "Esta cuenta no tiene permiso para ver los gastos. Pedile acceso al dueño de la app."
-        : "Revisá la conexión y recargá la página."}</p>
+      <h2>Cuenta no autorizada</h2>
+      <p>Ingresaste como <strong>${esc(usuario?.email ?? "")}</strong>, pero esa cuenta no tiene permiso para ver los gastos.</p>
+      <p class="nota">Si es tu cuenta: el email tiene que estar escrito igual (en minúsculas) en las reglas de Firebase, y las reglas tienen que estar publicadas. Si usaste otra cuenta, tocá “Salir” y entrá con la correcta. Si no sos el dueño, pedile acceso.</p>
+    </div>`
+    : `
+    <div class="tarjeta">
+      <h2>No se pudieron cargar los gastos</h2>
+      <p>Revisá la conexión y recargá la página.</p>
+      <p class="nota">Detalle técnico: ${esc(errorNube?.code ?? errorNube?.message ?? "desconocido")}</p>
     </div>`;
 }
 

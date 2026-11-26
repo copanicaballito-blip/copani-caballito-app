@@ -50,6 +50,11 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   Los 3 usuarios se crean a mano en la consola; la autorización real la hacen las reglas (`firebase/firestore.rules`),
   no el alta de usuarios: una fuente secundaria indica que desactivar el sign-up en la consola no frena el alta por API
   (no verificado en la doc oficial), así que no se depende de eso.
+- Login: los mensajes de error son específicos (`mensajeLogin` en `docs/app.js`); si el código es desconocido se
+  muestra entre paréntesis para poder diagnosticar. "Cuenta no autorizada" muestra con qué email se ingresó
+  (causa típica: ese email no está igual, en minúsculas, en las reglas, o las reglas no se publicaron).
+  "Olvidé mi contraseña" usa `sendPasswordResetEmail` de Firebase Auth. Con la protección de enumeración de
+  emails de Firebase, usuario inexistente y contraseña mala dan el mismo error (`auth/invalid-credential`).
 - Repo público: los emails reales NO van en el repo (solo en las reglas publicadas en la consola).
   `docs/firebase-config.js` no es secreto y sí va.
 - SDK de Firebase por CDN, versión 12.19.0 (la misma que usa el formulario web de Lavanda Suite).
