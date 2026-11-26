@@ -26,8 +26,8 @@ compartan los mismos datos hay que conectarla a Firebase:
 2. **Authentication** → Comenzar → habilitar **Correo electrónico/contraseña**. En *Usuarios* → Agregar usuario: crear los 3 usuarios del equipo.
 3. **Firestore Database** → Crear base de datos (modo producción).
 4. Firestore → **Reglas** → pegar el contenido de [`firebase/firestore.rules`](firebase/firestore.rules), cambiar los 3 emails de ejemplo por los reales (en minúsculas) y **Publicar**.
-5. Configuración del proyecto → Tus apps → **Web** (`</>`) → copiar los datos de configuración y pasarlos a Claude, que los carga en `docs/firebase-config.js`.
-6. En GitHub: **Settings → Pages** → *Deploy from a branch* → rama `main`, carpeta `/docs`.
+5. Configuración del proyecto → Tus apps → **Web** (`</>`) → copiar los datos de configuración y pasarlos a Claude, que los carga en `docs/firebase-config.js` (**ya hecho**: proyecto `copani-caballito-v02`).
+6. En GitHub: **Settings → Pages** → *Deploy from a branch* → carpeta `/docs` (hoy publica desde la rama `chore/base-del-repo`; después de fusionar, elegir `main`).
 
 El link de la app queda en `https://copanicaballito-blip.github.io/copani-caballito-app/`.
 

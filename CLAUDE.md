@@ -41,7 +41,12 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
 - En el entorno web de Claude, Playwright sirve para probar la app en modo demo.
 
 ## Pendiente
-- Crear el proyecto Firebase y cargar su configuración en `docs/firebase-config.js` (ver README).
-- Probar con Firebase real: las reglas de Firestore y el login no se pudieron probar sin proyecto.
-- Activar GitHub Pages (Settings > Pages > main, /docs).
+- Firebase: proyecto `copani-caballito-v02`; su configuración ya está en `docs/firebase-config.js`
+  (la app corre en modo nube). Falta confirmar con el dueño: 3 usuarios creados en Authentication, base
+  Firestore `(default)` creada y reglas publicadas con los emails reales.
+- Probar con Firebase real: el login y las reglas no se pudieron probar desde el entorno web de Claude
+  (no llega a Firebase ni a gstatic). El flujo se probó con un Firebase simulado (Playwright, rutas a gstatic).
+- GitHub Pages hoy publica desde la rama `chore/base-del-repo`, carpeta `/docs` (`main` no tiene la app todavía).
+  Al fusionar a `main`, cambiar la fuente en Settings > Pages.
 - Probar en un iPhone real (instalación desde Safari).
+- Opcional: restringir la API key de Firebase por dominio (referrer) en Google Cloud Console.
