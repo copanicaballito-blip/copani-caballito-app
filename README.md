@@ -1,42 +1,16 @@
-# Copani Caballito App
+# Copani Caballito
 
-App móvil **interna** (Android e iOS) para la gestión del negocio Copani Caballito.
-Uso exclusivo del equipo. Módulos previstos (a definir): stock, ventas, caja y empleados.
+App Android de **gestión interna** de Copani Caballito (uso del equipo).
 
-## Stack
+## Cómo se instala
 
-| Capa | Tecnología | Referencia |
-|---|---|---|
-| App móvil | Expo (React Native) + TypeScript | [docs.expo.dev](https://docs.expo.dev/) |
-| Backend / base de datos / login | Supabase (Postgres + Auth + Row Level Security) | [supabase.com/docs](https://supabase.com/docs/guides/getting-started/quickstarts/expo-react-native) |
-| Builds y publicación | EAS Build / EAS Submit | [docs.expo.dev/build](https://docs.expo.dev/build/introduction/) |
-| CI | GitHub Actions | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
+1. Entrá a la sección **Releases** de este repositorio.
+2. Descargá el APK más reciente en el teléfono Android.
+3. Abrilo para instalarlo (Android puede pedir permiso para instalar apps de esta fuente).
 
-## Estado
+Cada cambio que se aprueba en `main` genera solo una versión nueva, que se instala encima de la anterior.
 
-Repositorio recién creado. Aún no existe el proyecto Expo.
+## Cómo está hecha
 
-## Puesta en marcha (cuando exista el proyecto)
-
-```bash
-npm ci
-cp .env.example .env   # completar con los datos de Supabase
-npx expo start
-```
-
-## Flujo de trabajo
-
-1. Crear una rama desde `main` (`feature/...`, `fix/...`, `chore/...`).
-2. Abrir un Pull Request hacia `main`.
-3. Debe pasar el CI y ser revisado por el owner ([CODEOWNERS](.github/CODEOWNERS)).
-4. Se fusiona a `main`.
-
-## Seguridad
-
-Ver [SECURITY.md](SECURITY.md). Nunca subir claves ni archivos `.env`.
-
-## Pendientes tras crear el proyecto Expo
-
-- Fusionar el `.gitignore` generado por `create-expo-app` con el de este repo.
-- Agregar el ecosistema `npm` a `.github/dependabot.yml`.
-- Confirmar la versión de Node del CI según el SDK de Expo elegido.
+Igual que la app Lavanda Suite: Kotlin + Jetpack Compose. GitHub la compila y publica el APK sola.
+Detalles técnicos en [CLAUDE.md](CLAUDE.md).

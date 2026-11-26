@@ -1,39 +1,57 @@
-# Integracion continua basica para Expo / TypeScript.
-# Mientras no exista package.json, los pasos se omiten y el workflow termina en verde.
 name: CI
 
 on:
-  pull_request:
   push:
-    branches: [main]
+    # La documentación no cambia la app.
+    paths-ignore:
+      - "**/*.md"
+  pull_request:
 
 permissions:
-  contents: read
+  contents: write # para publicar el APK como release
 
 jobs:
-  verify:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        if: hashFiles('package.json') != ''
+      - uses: actions/setup-java@v4
         with:
-          node-version: 22
-          cache: npm
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
 
-      - name: Instalar dependencias
-        if: hashFiles('package-lock.json') != ''
-        run: npm ci
+      - name: Tests y APK
+        run: |
+          set -o pipefail
+          ./gradlew :core:test :app:assembleDebug --console=plain 2>&1 | tee build.log
 
-      - name: Lint
-        if: hashFiles('package-lock.json') != ''
-        run: npm run lint --if-present
+      # Los logs de Actions no se pueden descargar desde el entorno web de Claude, pero las
+      # anotaciones sí (API de check-runs). Así se pueden leer los errores de compilación.
+      - name: Errores como anotaciones
+        if: failure()
+        run: |
+          resumen=$(grep -E -A4 "^e: |What went wrong|error:|FAILED" build.log | head -80 \
+            | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Build fallido::${resumen:-sin detalle}"
 
-      - name: Chequeo de tipos
-        if: hashFiles('tsconfig.json') != '' && hashFiles('package-lock.json') != ''
-        run: npx tsc --noEmit
+      - name: Preparar APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk "copani-caballito-0.1.${{ github.run_number }}.apk"
 
-      - name: Tests
-        if: hashFiles('package-lock.json') != ''
-        run: npm test --if-present
+      - uses: actions/upload-artifact@v4
+        with:
+          name: copani-caballito-apk
+          path: copani-caballito-*.apk
+
+      - name: Publicar release con el APK
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.${{ github.run_number }}
+          name: Copani Caballito 0.1.${{ github.run_number }}
+          # Así .../releases/latest apunta siempre a la última
+          prerelease: false
+          files: copani-caballito-0.1.${{ github.run_number }}.apk
+          body: |
+            APK para instalar en Android (versión de prueba).
+            Commit: ${{ github.sha }}

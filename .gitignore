@@ -1,49 +1,19 @@
-# Referencia: https://docs.github.com/en/get-started/git-basics/ignoring-files
-# Base pensada para Expo (React Native) + TypeScript.
-# Al generar el proyecto con create-expo-app, fusionar con el .gitignore que trae.
-
-# Dependencias
-node_modules/
-
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
-
-# Carpetas nativas (se regeneran con `npx expo prebuild`)
-/android
-/ios
+.gradle/
+build/
 .kotlin/
-
-# Secretos y credenciales: NUNCA se suben
-.env
-.env.*
-!.env.example
-*.pem
-*.p8
-*.p12
-*.key
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+*.apk
+*.aab
 *.jks
 *.keystore
-*.mobileprovision
-google-services.json
-GoogleService-Info.plist
-
-# Metro
-.metro-health-check*
-
-# Logs y depuracion
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# TypeScript
-*.tsbuildinfo
-
-# Sistema operativo y editores
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/*
-!.vscode/extensions.json
+# Excepción: clave de debug fija para que los APK de CI se actualicen sin desinstalar
+!app/debug.keystore
+# Nunca se suben claves ni archivos con secretos
+.env
+.env.*
+*.pem
+*.p12
