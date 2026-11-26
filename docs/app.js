@@ -1,0 +1,374 @@
+import { crearDatos } from "./datos.js";
+import {
+  ESTADOS, ETIQUETAS, hoyISO, estadoEfectivo, totales, ordenar, saldoDe, pagadoDe,
+  agregarPago, quitarPago, textoVencimiento, formatoPesos, formatoFecha,
+  parseMonto, validarGasto, validarPago,
+} from "./logica.js";
+
+const $ = (selector) => document.querySelector(selector);
+const esc = (texto) =>
+  String(texto).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const contenido = $("#contenido");
+const dlgDetalle = $("#dlg-detalle");
+const dlgForm = $("#dlg-form");
+const formGasto = $("#form-gasto");
+
+let datos = null;
+let usuario = null;
+let gastos = [];
+let cargando = false;
+let errorNube = null;
+let desuscribir = null;
+let filtro = "todos";
+let detalleId = null;
+let editando = null; // gasto que se está editando; null = gasto nuevo
+
+// ---- Inicio --------------------------------------------------------------------------------
+
+async function iniciar() {
+  contenido.innerHTML = `<p class="vacio">Cargando…</p>`;
+  try {
+    datos = await crearDatos();
+  } catch (e) {
+    console.error(e);
+    contenido.innerHTML = `<p class="error">No se pudo cargar la app. Revisá la conexión y recargá la página.</p>`;
+    return;
+  }
+  $("#aviso-demo").hidden = datos.modo !== "demo";
+  datos.alCambiarSesion((u) => {
+    usuario = u;
+    if (desuscribir) desuscribir();
+    desuscribir = null;
+    gastos = [];
+    errorNube = null;
+    cargando = Boolean(u);
+    if (u) {
+      desuscribir = datos.escucharGastos(
+        (lista) => {
+          gastos = lista;
+          cargando = false;
+          render();
+        },
+        (e) => {
+          console.error(e);
+          errorNube = e;
+          cargando = false;
+          render();
+        },
+      );
+    }
+    render();
+  });
+}
+
+// ---- Pantallas -----------------------------------------------------------------------------
+
+function render() {
+  $("#btn-salir").hidden = !(usuario && datos.modo === "nube");
+  $("#btn-nuevo").hidden = !usuario || Boolean(errorNube);
+  if (!usuario) return pintarLogin();
+  if (errorNube) return pintarError();
+  if (cargando) {
+    contenido.innerHTML = `<p class="vacio">Cargando gastos…</p>`;
+    return;
+  }
+  pintarLista();
+  if (detalleId) pintarDetalle();
+}
+
+function pintarLogin() {
+  cerrarDialogos();
+  contenido.innerHTML = `
+    <form id="form-login" class="tarjeta" novalidate>
+      <h2>Ingresar</h2>
+      <label>Email
+        <input type="email" name="email" autocomplete="username" autocapitalize="none" required>
+      </label>
+      <label>Contraseña
+        <input type="password" name="clave" autocomplete="current-password" required>
+      </label>
+      <p class="error" id="error-login" role="alert"></p>
+      <button class="primario" style="width:100%">Ingresar</button>
+    </form>`;
+  $("#form-login").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const f = ev.target;
+    const error = $("#error-login");
+    error.textContent = "";
+    if (!f.email.value.trim() || !f.clave.value) {
+      error.textContent = "Escribí tu email y tu contraseña.";
+      return;
+    }
+    const boton = f.querySelector("button");
+    boton.disabled = true;
+    try {
+      await datos.ingresar(f.email.value.trim(), f.clave.value);
+    } catch (e) {
+      error.textContent = mensajeLogin(e);
+      boton.disabled = false;
+    }
+  });
+}
+
+function mensajeLogin(e) {
+  switch (e?.code) {
+    case "auth/invalid-credential":
+    case "auth/wrong-password":
+    case "auth/user-not-found":
+      return "Email o contraseña incorrectos.";
+    case "auth/invalid-email":
+      return "El email no es válido.";
+    case "auth/too-many-requests":
+      return "Demasiados intentos. Esperá unos minutos y probá de nuevo.";
+    case "auth/network-request-failed":
+      return "No hay conexión. Probá de nuevo.";
+    default:
+      return "No se pudo ingresar. Probá de nuevo.";
+  }
+}
+
+function pintarError() {
+  cerrarDialogos();
+  const sinPermiso = errorNube?.code === "permission-denied";
+  contenido.innerHTML = `
+    <div class="tarjeta">
+      <h2>${sinPermiso ? "Cuenta no autorizada" : "No se pudieron cargar los gastos"}</h2>
+      <p>${sinPermiso
+        ? "Esta cuenta no tiene permiso para ver los gastos. Pedile acceso al dueño de la app."
+        : "Revisá la conexión y recargá la página."}</p>
+    </div>`;
+}
+
+function pintarLista() {
+  const hoy = hoyISO();
+  const t = totales(gastos, hoy);
+  const ordenados = ordenar(gastos);
+  const cuenta = { todos: gastos.length, estimado: 0, a_pagar: 0, vencido: 0, pagado: 0 };
+  for (const g of gastos) cuenta[estadoEfectivo(g, hoy)] += 1;
+  const visibles = ordenados.filter((g) => filtro === "todos" || estadoEfectivo(g, hoy) === filtro);
+
+  const chips = [["todos", "Todos"], ["vencido", "Vencido"], ["a_pagar", "A pagar"], ["estimado", "Estimado"], ["pagado", "Pagado"]]
+    .map(([clave, texto]) => `<button type="button" data-filtro="${clave}" aria-pressed="${filtro === clave}">${texto} (${cuenta[clave]})</button>`)
+    .join("");
+
+  contenido.innerHTML = `
+    <section class="resumen" aria-label="Resumen">
+      <div class="dato"><span>Saldo a pagar</span><strong>${formatoPesos(t.saldo)}</strong></div>
+      <div class="dato"><span>Pagado</span><strong>${formatoPesos(t.pagado)}</strong></div>
+      <div class="dato rojo"><span>Vencido</span><strong>${formatoPesos(t.saldoVencido)}</strong><small>${t.cantidadVencidos} ${t.cantidadVencidos === 1 ? "gasto" : "gastos"}</small></div>
+    </section>
+    <nav class="filtros" aria-label="Filtrar por estado">${chips}</nav>
+    ${visibles.length
+      ? `<ul class="lista">${visibles.map((g) => tarjeta(g, hoy)).join("")}</ul>`
+      : `<p class="vacio">${gastos.length ? "No hay gastos en este estado." : "Todavía no hay gastos cargados. Tocá “+ Nuevo gasto”."}</p>`}`;
+}
+
+function tarjeta(g, hoy) {
+  const ef = estadoEfectivo(g, hoy);
+  const rel = textoVencimiento(g, hoy);
+  const parcial = (g.pagos ?? []).length
+    ? `<div class="parcial">Pagado ${formatoPesos(pagadoDe(g))} · Saldo ${formatoPesos(saldoDe(g))}</div>`
+    : "";
+  return `
+    <li>
+      <button type="button" class="gasto estado-${ef}" data-id="${esc(g.id)}">
+        <div class="fila"><span class="desc">${esc(g.descripcion)}</span><span class="monto">${formatoPesos(g.monto)}</span></div>
+        <div class="fila">
+          <span class="fecha">${formatoFecha(g.fechaPago)}${rel ? ` · ${rel}` : ""}</span>
+          <span class="badge estado-${ef}">${ETIQUETAS[ef]}</span>
+        </div>
+        ${parcial}
+      </button>
+    </li>`;
+}
+
+contenido.addEventListener("click", (ev) => {
+  const chip = ev.target.closest("[data-filtro]");
+  if (chip) {
+    filtro = chip.dataset.filtro;
+    pintarLista();
+    return;
+  }
+  const item = ev.target.closest("[data-id]");
+  if (item) abrirDetalle(item.dataset.id);
+});
+
+// ---- Detalle: estado y pagos parciales -----------------------------------------------------
+
+function abrirDetalle(id) {
+  detalleId = id;
+  pintarDetalle();
+}
+
+function pintarDetalle() {
+  const g = gastos.find((x) => x.id === detalleId);
+  if (!g) {
+    cerrarDetalle();
+    return;
+  }
+  const hoy = hoyISO();
+  const ef = estadoEfectivo(g, hoy);
+  const rel = textoVencimiento(g, hoy);
+  const pagos = g.pagos ?? [];
+
+  // Si llega un cambio de otro celular mientras se escribe un pago, no se pierde lo escrito.
+  const montoEscrito = $("#pago-monto")?.value ?? "";
+  const fechaEscrita = $("#pago-fecha")?.value || hoy;
+
+  $("#detalle-cuerpo").innerHTML = `
+    <div class="det-cab">
+      <h2>${esc(g.descripcion)}</h2>
+      <span class="badge estado-${ef}">${ETIQUETAS[ef]}</span>
+    </div>
+    <dl class="datos">
+      <div><dt>Monto</dt><dd>${formatoPesos(g.monto)}</dd></div>
+      <div><dt>Fecha de pago</dt><dd>${formatoFecha(g.fechaPago)}${rel ? `<br><small>${rel}</small>` : ""}</dd></div>
+      <div><dt>Total pagado</dt><dd>${formatoPesos(pagadoDe(g))}</dd></div>
+      <div><dt>Saldo a pagar</dt><dd>${formatoPesos(saldoDe(g))}</dd></div>
+    </dl>
+
+    <h3>Cambiar estado</h3>
+    <div class="estados fila-botones">
+      ${ESTADOS.map((e) => `<button type="button" class="estado-btn estado-${e}" data-estado="${e}" aria-pressed="${g.estado === e}">${ETIQUETAS[e]}</button>`).join("")}
+    </div>
+    <p class="nota">“Vencido” se marca solo cuando pasa la fecha de pago y el gasto no está pagado.</p>
+
+    <h3>Pagos parciales</h3>
+    ${pagos.length
+      ? `<ul class="pagos">${pagos.map((p, i) => `
+          <li><span>${formatoFecha(p.fecha)}</span><strong>${formatoPesos(p.monto)}</strong>
+          <button type="button" data-quitar="${i}" aria-label="Quitar el pago del ${formatoFecha(p.fecha)}">Quitar</button></li>`).join("")}</ul>`
+      : `<p class="nota">Todavía no hay pagos registrados.</p>`}
+    <form id="form-pago" class="pago-form" novalidate>
+      <label>Monto del pago ($)<input id="pago-monto" inputmode="numeric" autocomplete="off" placeholder="Ej. 50000" value="${esc(montoEscrito)}"></label>
+      <label>Fecha<input id="pago-fecha" type="date" value="${esc(fechaEscrita)}"></label>
+      <button class="primario">Registrar pago</button>
+    </form>
+    <p class="error" id="error-pago" role="alert"></p>
+
+    <div class="acciones">
+      <button type="button" class="peligro" data-accion="eliminar">Eliminar</button>
+      <button type="button" data-accion="editar">Editar</button>
+      <button type="button" data-accion="cerrar">Cerrar</button>
+    </div>`;
+  if (!dlgDetalle.open) dlgDetalle.showModal();
+}
+
+function cerrarDetalle() {
+  detalleId = null;
+  if (dlgDetalle.open) dlgDetalle.close();
+}
+
+function cerrarDialogos() {
+  detalleId = null;
+  if (dlgDetalle.open) dlgDetalle.close();
+  if (dlgForm.open) dlgForm.close();
+}
+
+dlgDetalle.addEventListener("close", () => {
+  detalleId = null;
+});
+
+dlgDetalle.addEventListener("click", (ev) => {
+  const g = gastos.find((x) => x.id === detalleId);
+  if (!g) return;
+
+  const estado = ev.target.closest("[data-estado]")?.dataset.estado;
+  if (estado) return guardar({ ...g, estado });
+
+  const quitar = ev.target.closest("[data-quitar]")?.dataset.quitar;
+  if (quitar !== undefined) return guardar(quitarPago(g, Number(quitar)));
+
+  const accion = ev.target.closest("[data-accion]")?.dataset.accion;
+  if (accion === "cerrar") cerrarDetalle();
+  if (accion === "editar") {
+    cerrarDetalle();
+    abrirFormulario(g);
+  }
+  if (accion === "eliminar" && confirm(`¿Eliminar “${g.descripcion}”? No se puede deshacer.`)) {
+    cerrarDetalle();
+    datos.borrar(g.id).catch(falloAlGuardar);
+  }
+});
+
+dlgDetalle.addEventListener("submit", (ev) => {
+  if (ev.target.id !== "form-pago") return;
+  ev.preventDefault();
+  const g = gastos.find((x) => x.id === detalleId);
+  if (!g) return;
+  const pago = { monto: parseMonto($("#pago-monto").value), fecha: $("#pago-fecha").value };
+  const error = validarPago(g, pago);
+  if (error) {
+    $("#error-pago").textContent = error;
+    return;
+  }
+  $("#pago-monto").value = "";
+  guardar(agregarPago(g, pago));
+});
+
+// ---- Alta y edición ------------------------------------------------------------------------
+
+function abrirFormulario(gasto) {
+  editando = gasto;
+  $("#form-titulo").textContent = gasto ? "Editar gasto" : "Nuevo gasto";
+  $("#error-gasto").textContent = "";
+  formGasto.descripcion.value = gasto?.descripcion ?? "";
+  formGasto.monto.value = gasto ? String(gasto.monto) : "";
+  formGasto.fechaPago.value = gasto?.fechaPago ?? hoyISO();
+  formGasto.estado.value = gasto?.estado ?? "estimado";
+  dlgForm.showModal();
+}
+
+$("#btn-nuevo").addEventListener("click", () => abrirFormulario(null));
+$("#form-cancelar").addEventListener("click", () => dlgForm.close());
+// El mensaje de error desaparece en cuanto se corrige el dato.
+formGasto.addEventListener("input", () => ($("#error-gasto").textContent = ""));
+dlgDetalle.addEventListener("input", () => {
+  const error = $("#error-pago");
+  if (error) error.textContent = "";
+});
+
+formGasto.addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const nuevo = {
+    descripcion: formGasto.descripcion.value.trim(),
+    monto: parseMonto(formGasto.monto.value),
+    fechaPago: formGasto.fechaPago.value,
+    estado: formGasto.estado.value,
+  };
+  const error = validarGasto(nuevo);
+  if (error) {
+    $("#error-gasto").textContent = error;
+    return;
+  }
+  guardar(editando ? { ...editando, ...nuevo } : { ...nuevo, pagos: [] });
+  dlgForm.close();
+});
+
+// ---- Varios --------------------------------------------------------------------------------
+
+function guardar(gasto) {
+  // No se espera la respuesta del servidor: la lista se actualiza sola al llegar el cambio.
+  datos.guardar(gasto).catch(falloAlGuardar);
+}
+
+function falloAlGuardar(e) {
+  console.error(e);
+  aviso(e?.code === "permission-denied"
+    ? "No tenés permiso para guardar cambios."
+    : "No se pudo guardar. Revisá la conexión.");
+}
+
+let temporizadorAviso = null;
+function aviso(texto) {
+  const toast = $("#toast");
+  toast.textContent = texto;
+  toast.hidden = false;
+  clearTimeout(temporizadorAviso);
+  temporizadorAviso = setTimeout(() => (toast.hidden = true), 4500);
+}
+
+$("#btn-salir").addEventListener("click", () => datos.salir());
+
+iniciar();

@@ -1,0 +1,32 @@
+// Reglas de Firestore. Se publican a mano: Firebase > Firestore Database > Reglas > pegar > Publicar.
+//
+// IMPORTANTE: este repositorio es público. Acá van emails de ejemplo; en la consola de Firebase hay
+// que reemplazarlos por los emails reales del equipo (en minúsculas). No subir los reales al repo.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function autorizado() {
+      return request.auth != null
+        && request.auth.token.email in [
+          "persona1@ejemplo.com",
+          "persona2@ejemplo.com",
+          "persona3@ejemplo.com"
+        ];
+    }
+
+    function gastoValido(g) {
+      return g.keys().hasOnly(["descripcion", "monto", "fechaPago", "estado", "pagos"])
+        && g.descripcion is string && g.descripcion.size() > 0 && g.descripcion.size() <= 120
+        && g.monto is int && g.monto >= 0
+        && g.fechaPago is string && g.fechaPago.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+        && g.estado in ["estimado", "a_pagar", "pagado"]
+        && g.pagos is list && g.pagos.size() <= 200;
+    }
+
+    match /gastos/{id} {
+      allow read, delete: if autorizado();
+      allow create, update: if autorizado() && gastoValido(request.resource.data);
+    }
+  }
+}

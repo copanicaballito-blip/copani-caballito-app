@@ -1,0 +1,15 @@
+{
+  "name": "Copani Caballito · Gastos",
+  "short_name": "Copani",
+  "description": "Gastos por pagar, vencimientos y pagos parciales de Copani Caballito.",
+  "lang": "es-AR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#6D4C41",
+  "theme_color": "#6D4C41",
+  "icons": [
+    { "src": "icono-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

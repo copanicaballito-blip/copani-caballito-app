@@ -1,19 +1,12 @@
-.gradle/
-build/
-.kotlin/
-local.properties
-.idea/
-*.iml
+node_modules/
 .DS_Store
-captures/
-*.apk
-*.aab
-*.jks
-*.keystore
-# Excepción: clave de debug fija para que los APK de CI se actualicen sin desinstalar
-!app/debug.keystore
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
 # Nunca se suben claves ni archivos con secretos
 .env
 .env.*
 *.pem
 *.p12
+*.key

@@ -1,0 +1,9 @@
+{
+  "name": "copani-caballito",
+  "private": true,
+  "type": "module",
+  "description": "App web de gastos de Copani Caballito",
+  "scripts": {
+    "test": "node --test"
+  }
+}

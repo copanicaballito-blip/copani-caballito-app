@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Copani Caballito · Gastos</title>
+  <meta name="theme-color" content="#6D4C41">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Copani">
+  <link rel="apple-touch-icon" href="icono-180.png">
+  <link rel="icon" type="image/png" href="icono-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <header class="barra">
+    <h1>Copani Caballito <small>Gastos</small></h1>
+    <button id="btn-salir" class="texto" hidden>Salir</button>
+  </header>
+
+  <div id="aviso-demo" class="aviso-demo" hidden>
+    Modo demo: los datos son de ejemplo y quedan solo en este navegador.
+  </div>
+
+  <main id="contenido"></main>
+
+  <button id="btn-nuevo" class="fab" hidden>+ Nuevo gasto</button>
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <!-- Detalle de un gasto: cambiar estado y registrar pagos parciales -->
+  <dialog id="dlg-detalle">
+    <div id="detalle-cuerpo" class="dlg-cuerpo"></div>
+  </dialog>
+
+  <!-- Alta y edición de un gasto -->
+  <dialog id="dlg-form">
+    <form id="form-gasto" class="dlg-cuerpo" novalidate>
+      <h2 id="form-titulo">Nuevo gasto</h2>
+      <label>Descripción
+        <input name="descripcion" maxlength="120" autocomplete="off" required>
+      </label>
+      <label>Monto ($)
+        <input name="monto" inputmode="numeric" autocomplete="off" placeholder="Ej. 150000" required>
+      </label>
+      <label>Fecha de pago
+        <input name="fechaPago" type="date" required>
+      </label>
+      <fieldset class="estados">
+        <legend>Estado</legend>
+        <label class="opcion estado-estimado"><input type="radio" name="estado" value="estimado"><span>Estimado</span></label>
+        <label class="opcion estado-a_pagar"><input type="radio" name="estado" value="a_pagar"><span>A pagar</span></label>
+        <label class="opcion estado-pagado"><input type="radio" name="estado" value="pagado"><span>Pagado</span></label>
+      </fieldset>
+      <p id="error-gasto" class="error" role="alert"></p>
+      <div class="acciones">
+        <button type="button" id="form-cancelar">Cancelar</button>
+        <button class="primario">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

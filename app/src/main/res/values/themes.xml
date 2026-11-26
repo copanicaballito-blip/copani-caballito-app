@@ -1,4 +1,0 @@
-<resources>
-    <!-- Tema de la ventana; los colores de la app los define Compose. -->
-    <style name="Theme.CopaniCaballito" parent="android:Theme.Material.Light.NoActionBar" />
-</resources>

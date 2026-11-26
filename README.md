@@ -1,16 +1,36 @@
-# Copani Caballito
+# Copani Caballito · Gastos
 
-App Android de **gestión interna** de Copani Caballito (uso del equipo).
+App web para llevar los **gastos por pagar**, sus **fechas de vencimiento** y los **pagos parciales**.
+Funciona igual en iPhone y Android: se abre desde el navegador y se instala en la pantalla de inicio.
 
-## Cómo se instala
+## Estados
 
-1. Entrá a la sección **Releases** de este repositorio.
-2. Descargá el APK más reciente en el teléfono Android.
-3. Abrilo para instalarlo (Android puede pedir permiso para instalar apps de esta fuente).
+| Estado | Color | Cómo se asigna |
+|---|---|---|
+| Estimado | amarillo | a mano |
+| A pagar | naranja | a mano |
+| Pagado | verde | a mano, o solo cuando los pagos parciales completan el monto |
+| Vencido | rojo | solo: pasó la fecha de pago y el gasto no está pagado |
 
-Cada cambio que se aprueba en `main` genera solo una versión nueva, que se instala encima de la anterior.
+## Instalar en el celular
 
-## Cómo está hecha
+- **iPhone:** abrir el link en **Safari** → botón Compartir → **Agregar a pantalla de inicio**.
+- **Android:** abrir el link en Chrome → menú ⋮ → **Instalar app** (o *Agregar a pantalla de inicio*).
 
-Igual que la app Lavanda Suite: Kotlin + Jetpack Compose. GitHub la compila y publica el APK sola.
-Detalles técnicos en [CLAUDE.md](CLAUDE.md).
+## Puesta en marcha (una sola vez)
+
+La app ya funciona en **modo demo** (datos de ejemplo, solo en el navegador). Para que los 3 usuarios
+compartan los mismos datos hay que conectarla a Firebase:
+
+1. En [Firebase](https://console.firebase.google.com): crear un proyecto.
+2. **Authentication** → Comenzar → habilitar **Correo electrónico/contraseña**. En *Usuarios* → Agregar usuario: crear los 3 usuarios del equipo.
+3. **Firestore Database** → Crear base de datos (modo producción).
+4. Firestore → **Reglas** → pegar el contenido de [`firebase/firestore.rules`](firebase/firestore.rules), cambiar los 3 emails de ejemplo por los reales (en minúsculas) y **Publicar**.
+5. Configuración del proyecto → Tus apps → **Web** (`</>`) → copiar los datos de configuración y pasarlos a Claude, que los carga en `docs/firebase-config.js`.
+6. En GitHub: **Settings → Pages** → *Deploy from a branch* → rama `main`, carpeta `/docs`.
+
+El link de la app queda en `https://copanicaballito-blip.github.io/copani-caballito-app/`.
+
+## Para quien desarrolla
+
+Detalles técnicos en [CLAUDE.md](CLAUDE.md). Tests de las reglas: `npm test`.
