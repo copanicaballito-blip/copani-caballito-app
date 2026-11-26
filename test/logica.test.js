@@ -4,7 +4,7 @@ import {
   hoyISO, estadoEfectivo, pagadoDe, saldoDe, agregarPago, quitarPago, totales, ordenar,
   textoVencimiento, formatoPesos, formatoFecha, parseMonto, validarGasto, validarPago, diasHasta,
   FORMAS_PAGO, etiquetaForma, mesDe, nombreMes, mesesDisponibles, gastosDelMes, totalesDelMes,
-  RUBROS, etiquetaRubro, SIN_RUBRO, coincideBusqueda, coincideRubro,
+  RUBROS, etiquetaRubro, SIN_RUBRO, coincideBusqueda, coincideRubro, rubrosOrdenados,
 } from "../docs/logica.js";
 
 const HOY = "2026-12-10";
@@ -156,6 +156,16 @@ test("rubros: las 10 opciones con sus nombres y validación", () => {
   assert.equal(validarGasto({ ...ok, rubro: "" }), null); // opcional
   assert.equal(validarGasto(ok), null);
   assert.match(validarGasto({ ...ok, rubro: "otro" }), /rubro/);
+});
+
+test("rubrosOrdenados: orden alfabético por nombre, sin importar tildes", () => {
+  const antes = [...RUBROS];
+  assert.deepEqual(rubrosOrdenados().map(etiquetaRubro), [
+    "Alquiler", "Compra insumos", "Empleados", "Gastos Bancarios", "Impuesto",
+    "Préstamos", "Productos", "Servicios", "Socios", "Tarjeta",
+  ]);
+  assert.deepEqual([...rubrosOrdenados()].sort(), [...RUBROS].sort()); // son los mismos rubros, solo reordenados
+  assert.deepEqual(RUBROS, antes); // no se modifica la lista original
 });
 
 test("filtro por rubro: todos, sin rubro o uno en particular", () => {

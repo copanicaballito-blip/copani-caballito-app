@@ -29,7 +29,9 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   Las reglas de Firestore (`firebase/firestore.rules`) deben permitir ese campo: hay que republicarlas.
 - Rubro: campo `rubro` del gasto (claves `productos`, `servicio`, `alquiler`, `compra_insumos`, `tarjeta`,
   `gasto_bancario`, `impuesto`, `socios`, `prestamos`, `empleados`; ver `RUBROS` en `docs/logica.js`).
-  Opcional: "Sin rubro" = el campo no se guarda. Renombrar un rubro = cambiar SOLO su etiqueta en
+  Opcional: "Sin rubro" = el campo no se guarda. Los desplegables (formulario y lupa) muestran los rubros
+  en orden alfabético por nombre (`rubrosOrdenados`), así que un rubro nuevo queda en su lugar solo; la
+  forma de pago, en cambio, va en el orden que pidió el dueño. Renombrar un rubro = cambiar SOLO su etiqueta en
   `ETIQUETAS_RUBRO` (las claves guardadas en la base no se tocan: "Servicios" sigue siendo la clave `servicio`
   y "Gastos Bancarios" la clave `gasto_bancario`).
   Las reglas de Firestore solo lo validan como texto de hasta 40 letras (la lista vive en la app), así que

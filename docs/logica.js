@@ -51,6 +51,12 @@ export function etiquetaRubro(clave) {
   return ETIQUETAS_RUBRO[clave] ?? "Sin rubro";
 }
 
+/** Claves de los rubros en orden alfabético por su nombre (sin importar tildes ni mayúsculas), para los desplegables. */
+export function rubrosOrdenados() {
+  const nombre = (clave) => normalizar(etiquetaRubro(clave));
+  return [...RUBROS].sort((a, b) => (nombre(a) < nombre(b) ? -1 : nombre(a) > nombre(b) ? 1 : 0));
+}
+
 /** Valor especial del filtro por rubro para ver los gastos que todavía no tienen rubro. */
 export const SIN_RUBRO = "__sin";
 

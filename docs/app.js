@@ -1,7 +1,7 @@
 import { crearDatos } from "./datos.js";
 import {
   ESTADOS, ETIQUETAS, FORMAS_PAGO, ETIQUETAS_FORMA, etiquetaForma,
-  RUBROS, ETIQUETAS_RUBRO, etiquetaRubro, SIN_RUBRO, coincideBusqueda, coincideRubro,
+  rubrosOrdenados, ETIQUETAS_RUBRO, etiquetaRubro, SIN_RUBRO, coincideBusqueda, coincideRubro,
   hoyISO, estadoEfectivo, ordenar, saldoDe, pagadoDe,
   mesDe, nombreMes, mesesDisponibles, gastosDelMes, totalesDelMes,
   agregarPago, quitarPago, textoVencimiento, formatoPesos, formatoFecha,
@@ -35,7 +35,7 @@ let rubroSel = ""; // filtro por rubro: "" = todos, SIN_RUBRO = sin rubro, o la 
 formGasto.formaPago.innerHTML =
   `<option value="">Sin definir</option>` +
   FORMAS_PAGO.map((k) => `<option value="${k}">${esc(ETIQUETAS_FORMA[k])}</option>`).join("");
-const opcionesRubro = RUBROS.map((k) => `<option value="${k}">${esc(ETIQUETAS_RUBRO[k])}</option>`).join("");
+const opcionesRubro = rubrosOrdenados().map((k) => `<option value="${k}">${esc(ETIQUETAS_RUBRO[k])}</option>`).join("");
 formGasto.rubro.innerHTML = `<option value="">Sin rubro</option>` + opcionesRubro;
 $("#sel-rubro").innerHTML =
   `<option value="">Todos los rubros</option><option value="${SIN_RUBRO}">Sin rubro</option>` + opcionesRubro;
