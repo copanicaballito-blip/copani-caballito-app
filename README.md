@@ -12,6 +12,16 @@ Funciona igual en iPhone y Android: se abre desde el navegador y se instala en l
 | Pagado | verde | a mano, o solo cuando los pagos parciales completan el monto |
 | Vencido | rojo | solo: pasó la fecha de pago y el gasto no está pagado |
 
+## Filtro por mes
+
+Arriba de la lista se elige el mes (o **Todos los meses**). Se muestra lo que **vence ese mes**. Los gastos
+**impagos de meses anteriores pasan al mes siguiente en rojo** hasta que se pagan.
+
+## Forma de pago
+
+Cada gasto puede tener una forma de pago (opcional): Manual - MP, Débito Automático - MP,
+Manual - Galicia, Débito Automático - Galicia o Efectivo.
+
 ## Instalar en el celular
 
 - **iPhone:** abrir el link en **Safari** → botón Compartir → **Agregar a pantalla de inicio**.

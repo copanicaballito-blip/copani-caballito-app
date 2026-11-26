@@ -46,7 +46,7 @@ async function crearNube() {
     async guardar(gasto) {
       const { id, ...datos } = gasto; // el id es el nombre del documento, no un campo
       const ref = id ? fs.doc(db, "gastos", id) : fs.doc(coleccion);
-      await fs.setDoc(ref, datos);
+      await fs.setDoc(ref, JSON.parse(JSON.stringify(datos))); // Firestore no acepta campos "undefined"
       return ref.id;
     },
     borrar(id) {
@@ -64,10 +64,10 @@ function ejemplos() {
     return hoyISO(d);
   };
   return [
-    { id: "ej1", descripcion: "Alquiler (ejemplo)", monto: 450000, fechaPago: desdeHoy(-3), estado: "a_pagar", pagos: [{ fecha: desdeHoy(-10), monto: 150000 }] },
-    { id: "ej2", descripcion: "Proveedor (ejemplo)", monto: 120000, fechaPago: desdeHoy(4), estado: "a_pagar", pagos: [] },
-    { id: "ej3", descripcion: "Electricidad (ejemplo)", monto: 38000, fechaPago: desdeHoy(12), estado: "estimado", pagos: [] },
-    { id: "ej4", descripcion: "Internet (ejemplo)", monto: 25000, fechaPago: desdeHoy(-8), estado: "pagado", pagos: [{ fecha: desdeHoy(-8), monto: 25000 }] },
+    { id: "ej1", descripcion: "Alquiler (ejemplo)", monto: 450000, fechaPago: desdeHoy(-3), estado: "a_pagar", formaPago: "manual_galicia", pagos: [{ fecha: desdeHoy(-10), monto: 150000 }] },
+    { id: "ej2", descripcion: "Proveedor (ejemplo)", monto: 120000, fechaPago: desdeHoy(4), estado: "a_pagar", formaPago: "manual_mp", pagos: [] },
+    { id: "ej3", descripcion: "Electricidad (ejemplo)", monto: 38000, fechaPago: desdeHoy(12), estado: "estimado", formaPago: "debito_galicia", pagos: [] },
+    { id: "ej4", descripcion: "Internet (ejemplo)", monto: 25000, fechaPago: desdeHoy(-8), estado: "pagado", formaPago: "debito_mp", pagos: [{ fecha: desdeHoy(-8), monto: 25000 }] },
   ];
 }
 

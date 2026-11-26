@@ -1,6 +1,8 @@
 import { crearDatos } from "./datos.js";
 import {
-  ESTADOS, ETIQUETAS, hoyISO, estadoEfectivo, totales, ordenar, saldoDe, pagadoDe,
+  ESTADOS, ETIQUETAS, FORMAS_PAGO, ETIQUETAS_FORMA, etiquetaForma,
+  hoyISO, estadoEfectivo, ordenar, saldoDe, pagadoDe,
+  mesDe, nombreMes, mesesDisponibles, gastosDelMes, totalesDelMes,
   agregarPago, quitarPago, textoVencimiento, formatoPesos, formatoFecha,
   parseMonto, validarGasto, validarPago,
 } from "./logica.js";
@@ -20,9 +22,15 @@ let gastos = [];
 let cargando = false;
 let errorNube = null;
 let desuscribir = null;
-let filtro = "todos";
+let filtro = "todos"; // filtro por estado
+let mesSel = mesDe(hoyISO()); // mes elegido ("aaaa-mm") o "todos"; empieza en el mes actual
 let detalleId = null;
 let editando = null; // gasto que se está editando; null = gasto nuevo
+
+// Opciones de forma de pago del formulario
+formGasto.formaPago.innerHTML =
+  `<option value="">Sin definir</option>` +
+  FORMAS_PAGO.map((k) => `<option value="${k}">${esc(ETIQUETAS_FORMA[k])}</option>`).join("");
 
 // ---- Inicio --------------------------------------------------------------------------------
 
@@ -140,19 +148,48 @@ function pintarError() {
     </div>`;
 }
 
+/** Gastos del mes elegido (con los impagos de meses anteriores arrastrados) o todos. */
+function itemsDelMes(hoy) {
+  if (mesSel === "todos") return ordenar(gastos).map((gasto) => ({ gasto, arrastradoDe: null }));
+  return gastosDelMes(gastos, mesSel, hoy);
+}
+
+function listaMeses(hoy) {
+  return mesesDisponibles(gastos, hoy, mesSel === "todos" ? [] : [mesSel]);
+}
+
 function pintarLista() {
   const hoy = hoyISO();
-  const t = totales(gastos, hoy);
-  const ordenados = ordenar(gastos);
-  const cuenta = { todos: gastos.length, estimado: 0, a_pagar: 0, vencido: 0, pagado: 0 };
-  for (const g of gastos) cuenta[estadoEfectivo(g, hoy)] += 1;
-  const visibles = ordenados.filter((g) => filtro === "todos" || estadoEfectivo(g, hoy) === filtro);
+  const items = itemsDelMes(hoy);
+  const t = totalesDelMes(items, hoy);
+  const cuenta = { todos: items.length, estimado: 0, a_pagar: 0, vencido: 0, pagado: 0 };
+  for (const { gasto } of items) cuenta[estadoEfectivo(gasto, hoy)] += 1;
+  const visibles = items.filter(({ gasto }) => filtro === "todos" || estadoEfectivo(gasto, hoy) === filtro);
+
+  const meses = listaMeses(hoy);
+  const pos = meses.indexOf(mesSel); // -1 si se eligió "Todos los meses"
+  const barraMes = `
+    <div class="mes">
+      <button type="button" data-mes-mover="-1" aria-label="Mes anterior" ${pos <= 0 ? "disabled" : ""}>‹</button>
+      <select id="sel-mes" aria-label="Mes">
+        <option value="todos"${mesSel === "todos" ? " selected" : ""}>Todos los meses</option>
+        ${meses.map((m) => `<option value="${m}"${m === mesSel ? " selected" : ""}>${nombreMes(m)}${m === mesDe(hoy) ? " (actual)" : ""}</option>`).join("")}
+      </select>
+      <button type="button" data-mes-mover="1" aria-label="Mes siguiente" ${pos < 0 || pos >= meses.length - 1 ? "disabled" : ""}>›</button>
+    </div>`;
 
   const chips = [["todos", "Todos"], ["vencido", "Vencido"], ["a_pagar", "A pagar"], ["estimado", "Estimado"], ["pagado", "Pagado"]]
     .map(([clave, texto]) => `<button type="button" data-filtro="${clave}" aria-pressed="${filtro === clave}">${texto} (${cuenta[clave]})</button>`)
     .join("");
 
+  const vacio = gastos.length === 0
+    ? "Todavía no hay gastos cargados. Tocá “+ Nuevo gasto”."
+    : mesSel !== "todos" && items.length === 0
+      ? `No hay gastos que venzan en ${esc(nombreMes(mesSel))}.`
+      : "No hay gastos en este estado.";
+
   contenido.innerHTML = `
+    ${barraMes}
     <section class="resumen" aria-label="Resumen">
       <div class="dato"><span>Saldo a pagar</span><strong>${formatoPesos(t.saldo)}</strong></div>
       <div class="dato"><span>Pagado</span><strong>${formatoPesos(t.pagado)}</strong></div>
@@ -160,15 +197,19 @@ function pintarLista() {
     </section>
     <nav class="filtros" aria-label="Filtrar por estado">${chips}</nav>
     ${visibles.length
-      ? `<ul class="lista">${visibles.map((g) => tarjeta(g, hoy)).join("")}</ul>`
-      : `<p class="vacio">${gastos.length ? "No hay gastos en este estado." : "Todavía no hay gastos cargados. Tocá “+ Nuevo gasto”."}</p>`}`;
+      ? `<ul class="lista">${visibles.map(({ gasto, arrastradoDe }) => tarjeta(gasto, hoy, arrastradoDe)).join("")}</ul>`
+      : `<p class="vacio">${vacio}</p>`}`;
 }
 
-function tarjeta(g, hoy) {
+function tarjeta(g, hoy, arrastradoDe) {
   const ef = estadoEfectivo(g, hoy);
   const rel = textoVencimiento(g, hoy);
+  const forma = g.formaPago ? `<div class="forma">${esc(etiquetaForma(g.formaPago))}</div>` : "";
   const parcial = (g.pagos ?? []).length
     ? `<div class="parcial">Pagado ${formatoPesos(pagadoDe(g))} · Saldo ${formatoPesos(saldoDe(g))}</div>`
+    : "";
+  const arrastre = arrastradoDe
+    ? `<div class="arrastrado">↪ Impago de ${esc(nombreMes(arrastradoDe).toLowerCase())}, pasa a este mes</div>`
     : "";
   return `
     <li>
@@ -178,12 +219,24 @@ function tarjeta(g, hoy) {
           <span class="fecha">${formatoFecha(g.fechaPago)}${rel ? ` · ${rel}` : ""}</span>
           <span class="badge estado-${ef}">${ETIQUETAS[ef]}</span>
         </div>
+        ${forma}
         ${parcial}
+        ${arrastre}
       </button>
     </li>`;
 }
 
 contenido.addEventListener("click", (ev) => {
+  const mover = ev.target.closest("[data-mes-mover]");
+  if (mover) {
+    const meses = listaMeses(hoyISO());
+    const nuevo = meses[meses.indexOf(mesSel) + Number(mover.dataset.mesMover)];
+    if (nuevo) {
+      mesSel = nuevo;
+      pintarLista();
+    }
+    return;
+  }
   const chip = ev.target.closest("[data-filtro]");
   if (chip) {
     filtro = chip.dataset.filtro;
@@ -192,6 +245,12 @@ contenido.addEventListener("click", (ev) => {
   }
   const item = ev.target.closest("[data-id]");
   if (item) abrirDetalle(item.dataset.id);
+});
+
+contenido.addEventListener("change", (ev) => {
+  if (ev.target.id !== "sel-mes") return;
+  mesSel = ev.target.value;
+  pintarLista();
 });
 
 // ---- Detalle: estado y pagos parciales -----------------------------------------------------
@@ -226,6 +285,7 @@ function pintarDetalle() {
       <div><dt>Fecha de pago</dt><dd>${formatoFecha(g.fechaPago)}${rel ? `<br><small>${rel}</small>` : ""}</dd></div>
       <div><dt>Total pagado</dt><dd>${formatoPesos(pagadoDe(g))}</dd></div>
       <div><dt>Saldo a pagar</dt><dd>${formatoPesos(saldoDe(g))}</dd></div>
+      <div class="ancho"><dt>Forma de pago</dt><dd>${esc(etiquetaForma(g.formaPago))}</dd></div>
     </dl>
 
     <h3>Cambiar estado</h3>
@@ -316,6 +376,7 @@ function abrirFormulario(gasto) {
   formGasto.descripcion.value = gasto?.descripcion ?? "";
   formGasto.monto.value = gasto ? String(gasto.monto) : "";
   formGasto.fechaPago.value = gasto?.fechaPago ?? hoyISO();
+  formGasto.formaPago.value = gasto?.formaPago ?? "";
   formGasto.estado.value = gasto?.estado ?? "estimado";
   dlgForm.showModal();
 }
@@ -335,6 +396,7 @@ formGasto.addEventListener("submit", (ev) => {
     descripcion: formGasto.descripcion.value.trim(),
     monto: parseMonto(formGasto.monto.value),
     fechaPago: formGasto.fechaPago.value,
+    formaPago: formGasto.formaPago.value,
     estado: formGasto.estado.value,
   };
   const error = validarGasto(nuevo);
@@ -342,7 +404,11 @@ formGasto.addEventListener("submit", (ev) => {
     $("#error-gasto").textContent = error;
     return;
   }
-  guardar(editando ? { ...editando, ...nuevo } : { ...nuevo, pagos: [] });
+  const gasto = editando ? { ...editando, ...nuevo } : { ...nuevo, pagos: [] };
+  if (!gasto.formaPago) delete gasto.formaPago; // "Sin definir": el campo no se guarda
+  // Se muestra el mes del gasto guardado para que se vea enseguida (antes de guardar: la lista se redibuja al guardar).
+  if (mesSel !== "todos") mesSel = mesDe(gasto.fechaPago);
+  guardar(gasto);
   dlgForm.close();
 });
 
@@ -356,7 +422,7 @@ function guardar(gasto) {
 function falloAlGuardar(e) {
   console.error(e);
   aviso(e?.code === "permission-denied"
-    ? "No tenés permiso para guardar cambios."
+    ? "No tenés permiso para guardar este cambio. Si es algo nuevo, puede faltar actualizar las reglas de Firebase."
     : "No se pudo guardar. Revisá la conexión.");
 }
 
@@ -366,7 +432,7 @@ function aviso(texto) {
   toast.textContent = texto;
   toast.hidden = false;
   clearTimeout(temporizadorAviso);
-  temporizadorAviso = setTimeout(() => (toast.hidden = true), 4500);
+  temporizadorAviso = setTimeout(() => (toast.hidden = true), 6000);
 }
 
 $("#btn-salir").addEventListener("click", () => datos.salir());

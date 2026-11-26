@@ -40,6 +40,11 @@ button.texto { background: none; border: 1px solid rgba(255,255,255,.6); color: 
 
 main { max-width: 640px; margin: 0 auto; padding: 16px; }
 
+/* Selector de mes */
+.mes { display: flex; gap: 8px; margin-bottom: 12px; }
+.mes select { flex: 1; margin-top: 0; min-width: 0; font-weight: 600; }
+.mes button { min-width: 48px; font-size: 1.5rem; line-height: 1; padding: 0; }
+
 /* Resumen */
 .resumen { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
 .dato { background: var(--blanco); border: 1px solid var(--borde); border-radius: 12px; padding: 10px; min-width: 0; }
@@ -71,8 +76,9 @@ main { max-width: 640px; margin: 0 auto; padding: 16px; }
 .fila { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .desc { font-weight: 600; overflow-wrap: anywhere; }
 .monto { font-weight: 700; white-space: nowrap; }
-.fecha, .parcial { font-size: .88rem; color: var(--suave); }
+.fecha, .parcial, .forma { font-size: .88rem; color: var(--suave); }
 .parcial { color: var(--texto); }
+.arrastrado { font-size: .85rem; font-weight: 700; color: var(--vencido); }
 
 .badge { display: inline-block; font-size: .78rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
 .badge.estado-estimado { background: var(--estimado); color: var(--estimado-t); }
@@ -91,7 +97,7 @@ main { max-width: 640px; margin: 0 auto; padding: 16px; }
 
 /* Formularios y botones */
 label { display: block; font-size: .9rem; color: var(--suave); margin-bottom: 12px; }
-input[type="text"], input[type="email"], input[type="password"], input[type="date"], input:not([type]), input[inputmode] {
+input[type="text"], input[type="email"], input[type="password"], input[type="date"], input:not([type]), input[inputmode], select {
   display: block; width: 100%; min-height: 46px; margin-top: 4px; padding: 8px 12px;
   border: 1px solid var(--borde); border-radius: 10px; background: #fff; color: var(--texto); font-size: 1rem;
 }
@@ -119,6 +125,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .45); }
 
 .datos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin: 10px 0; }
 .datos div { background: var(--fondo); border-radius: 10px; padding: 8px 10px; }
+.datos .ancho { grid-column: 1 / -1; }
 .datos dt { font-size: .78rem; color: var(--suave); }
 .datos dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
 

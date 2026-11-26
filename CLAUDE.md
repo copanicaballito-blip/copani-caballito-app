@@ -9,12 +9,27 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
 - Estados y colores: Estimado (amarillo), A pagar (naranja), Pagado (verde), Vencido (rojo).
 - Se cargan gastos nuevos y se cambia el estado.
 - Algunos gastos admiten pagos parciales: se suman para mostrar total pagado y saldo a pagar.
+- Forma de pago de cada gasto (opcional): Manual - MP, Débito Automático - MP, Manual - Galicia,
+  Débito Automático - Galicia, Efectivo.
+- Filtro por mes: se elige el mes y se ve lo que vence ese mes. Los impagos de meses anteriores
+  pasan al mes siguiente, en rojo, hasta que se pagan.
 
 ## Decisiones
 - "Vencido" NO se elige: se calcula (no pagado + fecha de pago anterior a hoy). El dueño dijo "tres estados"
   y listó cuatro; se interpretó así. Si lo quiere elegible a mano, cambiar `estadoEfectivo` en `docs/logica.js`.
 - Estado guardado: `estimado` | `a_pagar` | `pagado`. "Pagado" a mano cuenta el monto completo;
   un pago parcial que completa el monto pasa el gasto a "Pagado" solo (`agregarPago`).
+- Forma de pago: campo `formaPago` del GASTO (claves `manual_mp`, `debito_mp`, `manual_galicia`,
+  `debito_galicia`, `efectivo`; ver `FORMAS_PAGO` en `docs/logica.js`). Es opcional: "Sin definir" = el campo
+  no se guarda. Se interpretó "los pagos" del dueño como los gastos por pagar; los pagos parciales no
+  llevan forma de pago propia (si se quiere, agregar `formaPago` dentro de cada elemento de `pagos`).
+  Las reglas de Firestore (`firebase/firestore.rules`) deben permitir ese campo: hay que republicarlas.
+- Filtro por mes (`mesesDisponibles`, `gastosDelMes`, `totalesDelMes` en `docs/logica.js`, con tests):
+  empieza en el mes actual; también hay "Todos los meses". Un mes muestra lo que vence en él más los
+  impagos de meses anteriores ("arrastrados", siempre vencidos = rojo). El arrastre llega hasta el mes actual:
+  en meses futuros solo se ve lo que vence ese mes. En "Pagado" del resumen no se cuenta lo arrastrado
+  (esos pagos parciales fueron de otro mes). La lista de meses va del más antiguo con gastos hasta el mes
+  siguiente al actual (o el último con gastos); al guardar un gasto la vista salta a su mes.
 - Montos en pesos enteros, sin decimales. Fechas como texto "aaaa-mm-dd".
 - Sin build ni dependencias: HTML + JS (módulos ES) + CSS en `docs/`. Se publica con GitHub Pages
   (rama `main`, carpeta `/docs`). Se instala desde el navegador (manifest + íconos PNG; sin service worker).

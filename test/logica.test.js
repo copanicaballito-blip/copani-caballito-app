@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   hoyISO, estadoEfectivo, pagadoDe, saldoDe, agregarPago, quitarPago, totales, ordenar,
   textoVencimiento, formatoPesos, formatoFecha, parseMonto, validarGasto, validarPago, diasHasta,
+  FORMAS_PAGO, etiquetaForma, mesDe, nombreMes, mesesDisponibles, gastosDelMes, totalesDelMes,
 } from "../docs/logica.js";
 
 const HOY = "2026-12-10";
@@ -119,4 +120,68 @@ test("validarPago", () => {
   assert.match(validarPago(g, { fecha: HOY, monto: 0 }), /monto/);
   assert.match(validarPago(g, { fecha: "x", monto: 10 }), /fecha/);
   assert.match(validarPago(gasto({ estado: "pagado" }), { fecha: HOY, monto: 10 }), /ya está pagado/);
+});
+
+// ---- Forma de pago -------------------------------------------------------------------------
+
+test("forma de pago: las 5 opciones con sus nombres y validación", () => {
+  assert.deepEqual(FORMAS_PAGO.map(etiquetaForma), [
+    "Manual - MP", "Débito Automático - MP", "Manual - Galicia", "Débito Automático - Galicia", "Efectivo",
+  ]);
+  assert.equal(etiquetaForma(undefined), "Sin definir");
+  const ok = { descripcion: "Luz", monto: 100, fechaPago: "2026-12-01", estado: "estimado" };
+  assert.equal(validarGasto({ ...ok, formaPago: "efectivo" }), null);
+  assert.equal(validarGasto({ ...ok, formaPago: "" }), null); // opcional
+  assert.equal(validarGasto(ok), null);
+  assert.match(validarGasto({ ...ok, formaPago: "cheque" }), /forma de pago/);
+});
+
+// ---- Filtro por mes ------------------------------------------------------------------------
+
+test("meses: clave y nombre", () => {
+  assert.equal(mesDe("2026-12-20"), "2026-12");
+  assert.equal(nombreMes("2026-12"), "Diciembre 2026");
+  assert.equal(nombreMes("2027-01"), "Enero 2027");
+});
+
+test("mesesDisponibles: rango sin huecos, con el mes actual y el siguiente", () => {
+  assert.deepEqual(mesesDisponibles([], HOY), ["2026-12", "2027-01"]);
+  const gastos = [gasto({ fechaPago: "2026-10-05" }), gasto({ fechaPago: "2027-02-01" })];
+  assert.deepEqual(mesesDisponibles(gastos, HOY), ["2026-10", "2026-11", "2026-12", "2027-01", "2027-02"]);
+  assert.ok(mesesDisponibles([], HOY, ["2026-09"]).includes("2026-09"));
+});
+
+test("gastosDelMes: lo que vence ese mes + lo impago de meses anteriores (arrastrado)", () => {
+  const dic = gasto({ descripcion: "Dic", fechaPago: "2026-12-20" });
+  const nov = gasto({ descripcion: "Nov", fechaPago: "2026-11-15" }); // impago -> vencido
+  const novPago = gasto({ descripcion: "NovPago", fechaPago: "2026-11-10", estado: "pagado" });
+  const ene = gasto({ descripcion: "Ene", fechaPago: "2027-01-05" });
+  const todos = [dic, nov, novPago, ene];
+  const resumen = (mes) => gastosDelMes(todos, mes, HOY).map((x) => [x.gasto.descripcion, x.arrastradoDe]);
+
+  // Mes actual: lo propio + el impago de noviembre arrastrado; lo pagado no pasa
+  assert.deepEqual(resumen("2026-12"), [["Nov", "2026-11"], ["Dic", null]]);
+  // Mes pasado: solo lo que vencía entonces (impago primero)
+  assert.deepEqual(resumen("2026-11"), [["Nov", null], ["NovPago", null]]);
+  // Mes futuro: solo lo que vence en ese mes, sin arrastre
+  assert.deepEqual(resumen("2027-01"), [["Ene", null]]);
+});
+
+test("un impago pasa mes a mes hasta el mes actual", () => {
+  const oct = gasto({ descripcion: "Oct", fechaPago: "2026-10-03" });
+  const en = (mes) => gastosDelMes([oct], mes, HOY).map((x) => x.arrastradoDe);
+  assert.deepEqual(en("2026-10"), [null]);
+  assert.deepEqual(en("2026-11"), ["2026-10"]);
+  assert.deepEqual(en("2026-12"), ["2026-10"]);
+  assert.deepEqual(en("2027-01"), []);
+  // Todo lo arrastrado ya está vencido (se muestra en rojo)
+  assert.equal(estadoEfectivo(oct, HOY), "vencido");
+});
+
+test("totalesDelMes: lo arrastrado suma su saldo, no lo que ya se pagó antes", () => {
+  const nov = gasto({ monto: 10000, fechaPago: "2026-11-15", pagos: [{ fecha: "2026-11-20", monto: 4000 }] });
+  const dic = gasto({ monto: 5000, fechaPago: "2026-12-20" });
+  const dicPago = gasto({ monto: 8000, estado: "pagado", fechaPago: "2026-12-02" });
+  const items = gastosDelMes([nov, dic, dicPago], "2026-12", HOY);
+  assert.deepEqual(totalesDelMes(items, HOY), { pagado: 8000, saldo: 11000, saldoVencido: 6000, cantidadVencidos: 1 });
 });

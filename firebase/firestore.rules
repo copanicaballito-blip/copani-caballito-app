@@ -15,12 +15,14 @@ service cloud.firestore {
         ];
     }
 
+    // formaPago es opcional: si falta, vale "sin_definir".
     function gastoValido(g) {
-      return g.keys().hasOnly(["descripcion", "monto", "fechaPago", "estado", "pagos"])
+      return g.keys().hasOnly(["descripcion", "monto", "fechaPago", "estado", "pagos", "formaPago"])
         && g.descripcion is string && g.descripcion.size() > 0 && g.descripcion.size() <= 120
         && g.monto is int && g.monto >= 0
         && g.fechaPago is string && g.fechaPago.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
         && g.estado in ["estimado", "a_pagar", "pagado"]
+        && g.get("formaPago", "sin_definir") in ["sin_definir", "manual_mp", "debito_mp", "manual_galicia", "debito_galicia", "efectivo"]
         && g.pagos is list && g.pagos.size() <= 200;
     }
 

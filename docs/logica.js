@@ -11,6 +11,21 @@ export const ETIQUETAS = {
   vencido: "Vencido",
 };
 
+/** Formas de pago de un gasto (es opcional: un gasto puede estar "sin definir"). */
+export const FORMAS_PAGO = ["manual_mp", "debito_mp", "manual_galicia", "debito_galicia", "efectivo"];
+
+export const ETIQUETAS_FORMA = {
+  manual_mp: "Manual - MP",
+  debito_mp: "Débito Automático - MP",
+  manual_galicia: "Manual - Galicia",
+  debito_galicia: "Débito Automático - Galicia",
+  efectivo: "Efectivo",
+};
+
+export function etiquetaForma(clave) {
+  return ETIQUETAS_FORMA[clave] ?? "Sin definir";
+}
+
 /** Fecha de hoy como "aaaa-mm-dd" en hora local. */
 export function hoyISO(ahora = new Date()) {
   const mes = String(ahora.getMonth() + 1).padStart(2, "0");
@@ -116,6 +131,72 @@ export function ordenar(gastos) {
   });
 }
 
+// ---- Meses ---------------------------------------------------------------------------------
+// Un mes se identifica con el texto "aaaa-mm". Se compara como texto: "2026-11" < "2026-12" < "2027-01".
+
+const NOMBRES_MES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+
+/** "2026-12-20" -> "2026-12" */
+export function mesDe(fechaISO) {
+  return fechaISO.slice(0, 7);
+}
+
+/** "2026-12" -> "Diciembre 2026" */
+export function nombreMes(clave) {
+  const [a, m] = clave.split("-").map(Number);
+  return `${NOMBRES_MES[m - 1]} ${a}`;
+}
+
+const indiceMes = (clave) => {
+  const [a, m] = clave.split("-").map(Number);
+  return a * 12 + (m - 1);
+};
+const claveDeIndice = (i) => `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`;
+
+/** Meses para elegir: desde el más antiguo hasta el más lejano, sin huecos. Siempre incluye el mes actual y el siguiente. */
+export function mesesDisponibles(gastos, hoy, extra = []) {
+  const claves = new Set([mesDe(hoy), claveDeIndice(indiceMes(mesDe(hoy)) + 1), ...extra]);
+  for (const g of gastos) claves.add(mesDe(g.fechaPago));
+  const indices = [...claves].map(indiceMes);
+  const lista = [];
+  for (let i = Math.min(...indices); i <= Math.max(...indices); i++) lista.push(claveDeIndice(i));
+  return lista;
+}
+
+/**
+ * Gastos que se muestran al elegir un mes: los que vencen en ese mes, más los impagos de meses anteriores
+ * ("arrastrados": pasan al mes siguiente, ya vencidos, hasta que se paguen). El arrastre llega hasta el mes
+ * actual; en meses futuros solo se ve lo que vence en ese mes.
+ * Devuelve [{ gasto, arrastradoDe }] ordenado; `arrastradoDe` es el mes original ("aaaa-mm") o null.
+ */
+export function gastosDelMes(gastos, mes, hoy) {
+  const actual = mesDe(hoy);
+  const resultado = [];
+  for (const gasto of ordenar(gastos)) {
+    const propio = mesDe(gasto.fechaPago);
+    if (propio === mes) resultado.push({ gasto, arrastradoDe: null });
+    else if (propio < mes && mes <= actual && !estaPagado(gasto)) resultado.push({ gasto, arrastradoDe: propio });
+  }
+  return resultado;
+}
+
+/** Totales de una lista de gastos del mes. Lo arrastrado suma su saldo, pero no lo que ya se pagó en meses anteriores. */
+export function totalesDelMes(items, hoy) {
+  const r = { pagado: 0, saldo: 0, saldoVencido: 0, cantidadVencidos: 0 };
+  for (const { gasto, arrastradoDe } of items) {
+    if (!arrastradoDe) r.pagado += pagadoDe(gasto);
+    r.saldo += saldoDe(gasto);
+    if (estadoEfectivo(gasto, hoy) === "vencido") {
+      r.saldoVencido += saldoDe(gasto);
+      r.cantidadVencidos += 1;
+    }
+  }
+  return r;
+}
+
 // ---- Formato y validación ------------------------------------------------------------------
 
 /** 1234567 -> "$ 1.234.567" */
@@ -146,6 +227,7 @@ export function validarGasto(g) {
   if (!Number.isInteger(g.monto) || g.monto < 0) return "El monto tiene que ser un número, por ejemplo 15000.";
   if (!fechaValida(g.fechaPago)) return "Elegí la fecha de pago.";
   if (!ESTADOS.includes(g.estado)) return "Elegí un estado.";
+  if (g.formaPago && !FORMAS_PAGO.includes(g.formaPago)) return "Elegí una forma de pago válida.";
   return null;
 }
 
