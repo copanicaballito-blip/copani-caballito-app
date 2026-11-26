@@ -42,6 +42,15 @@ service cloud.firestore {
         && r.meses is map && r.meses.keys().size() <= 600;
     }
 
+    // Cierre de un mes terminado: copia congelada de sus gastos, de donde sale su Excel. Se crea una sola vez
+    // (el documento se llama como el mes) y después no se puede modificar ni borrar desde la app.
+    function cierreValido(c, mes) {
+      return c.keys().hasOnly(["mes", "cerradoEn", "filas"])
+        && c.mes == mes && mesValido(c.mes)
+        && c.cerradoEn is string && c.cerradoEn.size() <= 40
+        && c.filas is list && c.filas.size() <= 1500;
+    }
+
     match /gastos/{id} {
       allow read, delete: if autorizado();
       allow create, update: if autorizado() && gastoValido(request.resource.data);
@@ -50,6 +59,12 @@ service cloud.firestore {
     match /recurrentes/{id} {
       allow read, delete: if autorizado();
       allow create, update: if autorizado() && recurrenteValido(request.resource.data);
+    }
+
+    match /cierres/{mes} {
+      allow read: if autorizado();
+      allow create: if autorizado() && cierreValido(request.resource.data, mes);
+      allow update, delete: if false;
     }
   }
 }

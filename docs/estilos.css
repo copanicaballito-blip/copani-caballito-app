@@ -48,6 +48,18 @@ input[type="search"] { -webkit-appearance: none; appearance: none; }
 
 .aviso-error { background: #fde8e8; color: #7a1212; border-bottom-color: #e5b3b3; }
 
+/* En pantallas angostas se acorta el título para que entren los botones de la barra */
+@media (max-width: 440px) {
+  .barra small { display: none; }
+}
+
+/* Reportes mensuales */
+.reportes { list-style: none; margin: 14px 0; padding: 0; display: grid; gap: 8px; }
+.reportes li { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--fondo); border-radius: 12px; padding: 10px 12px; }
+.reportes strong { display: block; }
+.reportes small { display: block; color: var(--suave); font-size: .82rem; }
+.reportes button { flex: 0 0 auto; }
+
 /* Casilla "Se repite todos los meses" */
 .check { display: flex; align-items: center; gap: 12px; color: var(--texto); font-size: 1rem; margin: 6px 0 10px; }
 .check input { width: 24px; height: 24px; flex: 0 0 auto; accent-color: var(--marron); }

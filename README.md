@@ -12,6 +12,18 @@ Funciona igual en iPhone y Android: se abre desde el navegador y se instala en l
 | Pagado | verde | a mano, o solo cuando los pagos parciales completan el monto |
 | Vencido | rojo | solo: pasó la fecha de pago y el gasto no está pagado |
 
+## Reportes mensuales (Excel)
+
+El ícono de la tabla (arriba, junto a la lupa) abre **Reportes mensuales**. Cada reporte es un Excel con tres
+hojas: **Resumen** (totales por estado, rubro y forma de pago), **Gastos** (el detalle, con filtros) y **Pagos**
+(los pagos parciales).
+
+- **Mes en curso:** se descarga siempre con los datos de ese momento.
+- **Meses terminados:** se guardan solos la primera vez que alguien abre la app después de que termina el mes, y
+  quedan **congelados**: el Excel de un mes cerrado no cambia aunque después se modifiquen gastos. El mes siguiente
+  arranca su propio reporte.
+- En iPhone, al tocar **Descargar Excel** se abre "Compartir": elegí **Guardar en Archivos**.
+
 ## Gastos recurrentes
 
 Para un gasto que se paga **todos los meses** (Alquiler, Empleados, Expensas, servicios…) se tilda

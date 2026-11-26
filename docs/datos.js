@@ -2,14 +2,16 @@
 //  - "nube": Firebase (login con email y contraseña + Firestore). Se usa si firebase-config.js tiene apiKey.
 //  - "demo": datos de ejemplo en este navegador, sin login. Se usa mientras no haya apiKey.
 //
-// Dos colecciones: `gastos` (gastos de una sola vez) y `recurrentes` (una serie por cada gasto que se
-// repite todos los meses; ver "Gastos recurrentes" en logica.js).
+// Tres colecciones: `gastos` (gastos de una sola vez), `recurrentes` (una serie por cada gasto que se
+// repite todos los meses; ver "Gastos recurrentes" en logica.js) y `cierres` (una copia congelada de cada
+// mes terminado, de donde sale su Excel; ver "Reporte mensual" en logica.js).
 import { firebaseConfig } from "./firebase-config.js";
 import { hoyISO, mesDe, crearSerie } from "./logica.js";
 
 const VERSION_FIREBASE = "12.19.0"; // la misma que usa el formulario web de Lavanda Suite
 const CLAVE_DEMO = "copani-demo-gastos-v1";
 const CLAVE_DEMO_REC = "copani-demo-recurrentes-v1";
+const CLAVE_DEMO_CIERRES = "copani-demo-cierres-v1";
 
 export async function crearDatos() {
   return firebaseConfig.apiKey ? crearNube() : crearDemo();
@@ -32,6 +34,7 @@ async function crearNube() {
   const db = fs.getFirestore(app);
   const coleccion = fs.collection(db, "gastos");
   const coleccionRec = fs.collection(db, "recurrentes");
+  const coleccionCierres = fs.collection(db, "cierres");
   const lista = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
   return {
@@ -88,6 +91,15 @@ async function crearNube() {
       lote.delete(fs.doc(db, "gastos", gastoId));
       await lote.commit();
     },
+
+    // Cierres de mes (copias congeladas; se crean una sola vez y después no se modifican)
+    escucharCierres(cb, cbError) {
+      return fs.onSnapshot(coleccionCierres, (snap) => cb(lista(snap)), cbError);
+    },
+    /** Guarda el cierre de un mes ({ mes, cerradoEn, filas }). El documento se llama como el mes. */
+    guardarCierre(cierre) {
+      return fs.setDoc(fs.doc(db, "cierres", cierre.mes), limpio(cierre));
+    },
   };
 }
 
@@ -129,22 +141,27 @@ function crearDemo() {
   };
   const guardadoGastos = leer(CLAVE_DEMO);
   const guardadoRec = leer(CLAVE_DEMO_REC);
+  const guardadoCierres = leer(CLAVE_DEMO_CIERRES);
   let gastos = guardadoGastos ? JSON.parse(guardadoGastos) : ejemplos();
   // Los ejemplos recurrentes solo aparecen la primera vez (si ya había gastos guardados, no se agregan).
   let series = guardadoRec ? JSON.parse(guardadoRec) : guardadoGastos ? [] : ejemplosRecurrentes();
+  let cierres = guardadoCierres ? JSON.parse(guardadoCierres) : [];
 
   const oyentes = new Set();
   const oyentesRec = new Set();
+  const oyentesCierres = new Set();
   const copia = (x) => JSON.parse(JSON.stringify(x));
   const cambiaron = () => {
     try {
       localStorage.setItem(CLAVE_DEMO, JSON.stringify(gastos));
       localStorage.setItem(CLAVE_DEMO_REC, JSON.stringify(series));
+      localStorage.setItem(CLAVE_DEMO_CIERRES, JSON.stringify(cierres));
     } catch {
       // sin almacenamiento: los datos de la demo viven solo mientras la página está abierta
     }
     oyentes.forEach((cb) => cb(copia(gastos)));
     oyentesRec.forEach((cb) => cb(copia(series)));
+    oyentesCierres.forEach((cb) => cb(copia(cierres.map((c) => ({ id: c.mes, ...c })))));
   };
   const nuevoId = (prefijo) => `${prefijo}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -198,6 +215,20 @@ function crearDemo() {
       const { id, ...datos } = serie;
       gastos = gastos.filter((g) => g.id !== gastoId);
       series = [...series, { id: nuevoId("rec"), ...copia(datos) }];
+      cambiaron();
+    },
+
+    escucharCierres(cb) {
+      oyentesCierres.add(cb);
+      cb(copia(cierres.map((c) => ({ id: c.mes, ...c }))));
+      return () => oyentesCierres.delete(cb);
+    },
+    async guardarCierre(cierre) {
+      // Igual que en la nube: un mes ya cerrado no se puede volver a guardar.
+      if (cierres.some((c) => c.mes === cierre.mes)) {
+        throw Object.assign(new Error("El mes ya estaba cerrado"), { code: "permission-denied" });
+      }
+      cierres = [...cierres, copia(cierre)];
       cambiaron();
     },
   };

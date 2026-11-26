@@ -13,6 +13,8 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   Débito Automático - Galicia, Efectivo.
 - Filtro por mes: se elige el mes y se ve lo que vence ese mes. Los impagos de meses anteriores
   pasan al mes siguiente, en rojo, hasta que se pagan.
+- Reporte mensual en Excel descargable. Cada mes terminado se guarda solo y queda congelado; el mes siguiente
+  arranca su propio reporte (el mes en curso se descarga siempre actualizado).
 - Gastos recurrentes (Alquiler, Empleados, Expensas…): se repiten todos los meses con los mismos datos; al editar
   un mes, el cambio vale para ese mes y los siguientes (los anteriores no cambian).
 - Rubro de cada gasto (opcional): Productos, Servicios, Alquiler, Compra insumos, Tarjeta, Gastos Bancarios,
@@ -44,6 +46,29 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   (`convertirEnRecurrente`: `writeBatch` que crea la serie y borra el gasto), y no se puede revertir desde la app.
   Si la colección `recurrentes` deniega (reglas sin actualizar), NO es un error fatal: se muestra un aviso rojo y los
   gastos comunes siguen funcionando (`errorRecurrentes` vs `errorNube`).
+- Reporte mensual en Excel (`docs/reporte.js` arma el libro, `docs/xlsx.js` es un escritor .xlsx propio sin
+  dependencias: ZIP sin comprimir + XML con estilos; botón de la tabla en la barra → cuadro "Reportes mensuales").
+  Tres hojas: Resumen (del mes / impagos arrastrados / total; por estado, rubro y forma de pago), Gastos (detalle,
+  filtros, fila de Total con SUBTOTAL que se recalcula al filtrar, fechas reales de Excel, colores de estado) y Pagos
+  (pagos parciales). Las "filas" de un mes (`filasDelMes`, `resumenDeFilas` en `logica.js`, con tests) son lo mismo
+  que muestra la pantalla de ese mes (los que vencen + impagos arrastrados), ya con el estado calculado.
+  MES EN CURSO: se arma al descargar, con lo que hay en ese momento. MES TERMINADO: se guarda UNA vez una copia
+  congelada en la colección `cierres` (documento = `aaaa-mm`: `{ mes, cerradoEn, filas }`) y de ahí sale siempre el
+  mismo Excel (el archivo es idéntico byte a byte), aunque después se paguen o editen gastos de ese mes.
+  CUÁNDO SE CIERRA: no hay servidor que corra a medianoche del último día (las funciones programadas y Cloud Storage
+  exigen el plan Blaze; el proyecto usa Spark): `cerrarMesesTerminados()` (en `app.js`) cierra cada mes ya terminado
+  sin cierre la primera vez que alguien abre la app después de que el mes terminó (también al volver al primer plano y
+  cada 10 min). Se cierra el mes terminado y no el último día para incluir todos los cambios de ese día. El estado
+  guardado es el del momento del cierre (no se puede reconstruir el de la medianoche: marcar "Pagado" no guarda fecha).
+  Solo cierra con las 3 colecciones (gastos, recurrentes, cierres) ya leídas y sin errores, para no guardar un mes al
+  que le falten los gastos recurrentes que todavía no cargaron. Las reglas solo permiten crear el cierre (no
+  modificarlo ni borrarlo desde la app; para corregir uno, borrarlo a mano en la consola de Firebase y se vuelve a
+  generar). Si dos celulares cierran el mismo mes a la vez, el segundo recibe permission-denied y se ignora. Un mes
+  terminado sin gastos no se cierra. Al estrenar la función se cierran de una vez todos los meses anteriores con
+  datos (con el estado de ese momento). Descarga: en iPhone/iPad se abre "Compartir" (para guardar en Archivos; la
+  descarga directa suele perderse con la app instalada); en el resto, descarga normal. Si la colección `cierres`
+  deniega (reglas sin actualizar) NO es fatal: aviso rojo (`#aviso-reglas`), el mes en curso se sigue pudiendo descargar.
+  Verificación de los archivos: se abrieron con openpyxl y con LibreOffice (headless) en el entorno de Claude.
 - Forma de pago: campo `formaPago` del GASTO (claves `manual_mp`, `debito_mp`, `manual_galicia`,
   `debito_galicia`, `efectivo`; ver `FORMAS_PAGO` en `docs/logica.js`). Es opcional: "Sin definir" = el campo
   no se guarda. Se interpretó "los pagos" del dueño como los gastos por pagar; los pagos parciales no
@@ -91,6 +116,7 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
 ## Archivos
 - `docs/logica.js`: reglas puras (estados, saldos, pagos, totales, orden, formato, validación). Con tests.
 - `docs/datos.js`: acceso a datos (modo nube y modo demo, misma interfaz).
+- `docs/reporte.js` y `docs/xlsx.js`: el Excel mensual (diseño del reporte y escritor de archivos .xlsx).
 - `docs/app.js`, `docs/index.html`, `docs/estilos.css`: pantallas.
 - `firebase/firestore.rules`: reglas (se publican a mano; con emails de ejemplo).
 - `test/logica.test.js`: tests con el runner de Node (`npm test`, Node 22, sin dependencias).

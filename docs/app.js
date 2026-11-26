@@ -4,10 +4,12 @@ import {
   rubrosOrdenados, ETIQUETAS_RUBRO, etiquetaRubro, SIN_RUBRO, coincideBusqueda, coincideRubro,
   hoyISO, estadoEfectivo, ordenar, saldoDe, pagadoDe,
   mesDe, nombreMes, mesesDisponibles, gastosDelMes, totalesDelMes, diasDelMes,
-  expandirRecurrentes, crearSerie, aplicarEdicion, conOcurrencia, dejarDeRepetir,
+  expandirRecurrentes, crearSerie, aplicarEdicion, conOcurrencia, dejarDeRepetir, filasDelMes,
   agregarPago, quitarPago, textoVencimiento, formatoPesos, formatoFecha,
   parseMonto, validarGasto, validarPago,
 } from "./logica.js";
+import { crearReporteXlsx, nombreArchivoReporte, fechaCorta } from "./reporte.js";
+import { TIPO_XLSX } from "./xlsx.js";
 
 const $ = (selector) => document.querySelector(selector);
 const esc = (texto) =>
@@ -16,6 +18,7 @@ const esc = (texto) =>
 const contenido = $("#contenido");
 const dlgDetalle = $("#dlg-detalle");
 const dlgForm = $("#dlg-form");
+const dlgReportes = $("#dlg-reportes");
 const formGasto = $("#form-gasto");
 
 let datos = null;
@@ -26,6 +29,13 @@ let gastos = []; // lo que se muestra: los de una sola vez + los meses que gener
 let cargando = false;
 let errorNube = null;
 let errorRecurrentes = null; // no es grave: si falla, igual se ven los gastos comunes
+let cierres = []; // meses ya cerrados (colección "cierres"): copias congeladas de donde sale su Excel
+let errorCierres = null; // no es grave: si falla, se puede descargar el mes en curso pero no se cierran meses
+// Cada colección avisa cuando llegó su primera lectura. Un mes solo se cierra con las tres completas,
+// para no guardar un cierre al que le falten gastos recurrentes que todavía no cargaron.
+let listoGastos = false;
+let listoRec = false;
+let listoCierres = false;
 let desuscribir = null;
 let filtro = "todos"; // filtro por estado
 let mesSel = mesDe(hoyISO()); // mes elegido ("aaaa-mm") o "todos"; empieza en el mes actual
@@ -62,13 +72,17 @@ async function iniciar() {
     desuscribir = null;
     unicos = [];
     series = [];
+    cierres = [];
     errorNube = null;
     errorRecurrentes = null;
+    errorCierres = null;
+    listoGastos = listoRec = listoCierres = false;
     cargando = Boolean(u);
     if (u) {
       const dejarDeEscucharGastos = datos.escucharGastos(
         (lista) => {
           unicos = lista;
+          listoGastos = true;
           cargando = false;
           render();
         },
@@ -82,6 +96,7 @@ async function iniciar() {
       const dejarDeEscucharRecurrentes = datos.escucharRecurrentes(
         (lista) => {
           series = lista;
+          listoRec = true;
           errorRecurrentes = null;
           render();
         },
@@ -91,9 +106,23 @@ async function iniciar() {
           render();
         },
       );
+      const dejarDeEscucharCierres = datos.escucharCierres(
+        (lista) => {
+          cierres = lista;
+          listoCierres = true;
+          errorCierres = null;
+          render();
+        },
+        (e) => {
+          console.error(e);
+          errorCierres = e;
+          render();
+        },
+      );
       desuscribir = () => {
         dejarDeEscucharGastos();
         dejarDeEscucharRecurrentes();
+        dejarDeEscucharCierres();
       };
     }
     render();
@@ -107,10 +136,16 @@ function mezclar() {
   gastos = [...unicos, ...expandirRecurrentes(series, hoyISO())];
 }
 
-function textoErrorRecurrentes() {
-  return errorRecurrentes?.code === "permission-denied"
-    ? "Los gastos recurrentes todavía no están habilitados: falta actualizar las reglas de Firebase (Firestore → Reglas). Los demás gastos funcionan normal."
-    : `No se pudieron cargar los gastos recurrentes (${errorRecurrentes?.code ?? errorRecurrentes?.message ?? "error desconocido"}).`;
+/** Aviso rojo cuando una colección nueva (recurrentes, cierres) todavía no tiene permiso: lo demás sigue andando. */
+function textoAvisoReglas() {
+  const faltan = [];
+  if (errorRecurrentes?.code === "permission-denied") faltan.push("los gastos recurrentes");
+  if (errorCierres?.code === "permission-denied") faltan.push("los reportes de meses cerrados");
+  if (faltan.length) {
+    return `Todavía no están habilitados ${faltan.join(" ni ")}: falta actualizar las reglas de Firebase (Firestore → Reglas). Lo demás funciona normal.`;
+  }
+  const otro = errorRecurrentes ?? errorCierres;
+  return `No se pudieron cargar algunos datos (${otro?.code ?? otro?.message ?? "error desconocido"}).`;
 }
 
 function render() {
@@ -119,9 +154,11 @@ function render() {
   $("#btn-nuevo").hidden = !usuario || Boolean(errorNube);
   const hayLista = Boolean(usuario) && !errorNube;
   $("#btn-buscar").hidden = !hayLista;
+  $("#btn-reportes").hidden = !hayLista;
   $("#buscador").hidden = !(hayLista && buscando);
-  $("#aviso-recurrentes").hidden = !(hayLista && errorRecurrentes);
-  if (errorRecurrentes) $("#aviso-recurrentes").textContent = textoErrorRecurrentes();
+  const conAviso = hayLista && Boolean(errorRecurrentes || errorCierres);
+  $("#aviso-reglas").hidden = !conAviso;
+  if (conAviso) $("#aviso-reglas").textContent = textoAvisoReglas();
   if (!usuario) return pintarLogin();
   if (errorNube) return pintarError();
   if (cargando) {
@@ -130,6 +167,8 @@ function render() {
   }
   pintarLista();
   if (detalleId) pintarDetalle();
+  if (dlgReportes.open) pintarReportes();
+  cerrarMesesTerminados();
 }
 
 function pintarLogin() {
@@ -580,6 +619,145 @@ function guardarEdicionRecurrente(nuevo) {
   datos.guardarSerie(aplicarEdicion(serie, g.mes, nuevo)).catch(falloAlGuardar);
   dlgForm.close();
 }
+
+// ---- Reportes mensuales (Excel) ------------------------------------------------------------
+// El mes en curso se descarga al momento (con lo que hay hoy). Cuando un mes termina se guarda solo una copia
+// congelada ("cierre") y de ahí sale siempre el mismo Excel. No hay un servidor que lo haga a medianoche del
+// último día (en el plan gratuito de Firebase no se puede): lo hace la primera persona que abre la app
+// después de que el mes terminó.
+
+const intentosCierre = new Set(); // meses que ya se intentaron cerrar en esta sesión
+let cerrando = false;
+
+function cerrarMesesTerminados() {
+  const completo = listoGastos && listoRec && listoCierres && !errorNube && !errorRecurrentes && !errorCierres;
+  if (!usuario || !completo || cerrando) return;
+  const hoy = hoyISO();
+  const yaCerrados = new Set(cierres.map((c) => c.mes));
+  const nuevos = [];
+  for (const mes of mesesDisponibles(gastos, hoy)) {
+    if (mes >= mesDe(hoy) || yaCerrados.has(mes) || intentosCierre.has(mes)) continue;
+    const filas = filasDelMes(gastos, mes, hoy);
+    if (filas.length) nuevos.push({ mes, cerradoEn: new Date().toISOString(), filas });
+  }
+  if (!nuevos.length) return;
+  cerrando = true;
+  Promise.all(
+    nuevos.map(async (cierre) => {
+      intentosCierre.add(cierre.mes);
+      try {
+        await datos.guardarCierre(cierre);
+      } catch (e) {
+        // "permission-denied": otro celular lo cerró un instante antes (el mes ya existe). No es un problema.
+        if (e?.code === "permission-denied") return;
+        console.error(e);
+        aviso(`No se pudo guardar el cierre de ${nombreMes(cierre.mes)}. Se reintenta en unos minutos.`);
+        setTimeout(() => intentosCierre.delete(cierre.mes), 5 * 60 * 1000);
+      }
+    }),
+  ).finally(() => {
+    cerrando = false;
+  });
+}
+
+function pintarReportes() {
+  const actual = mesDe(hoyISO());
+  const cerrados = [...cierres].sort((a, b) => (a.mes < b.mes ? 1 : -1));
+  const problema = errorCierres
+    ? `<p class="error">${errorCierres.code === "permission-denied"
+        ? "Los meses cerrados todavía no están disponibles: falta actualizar las reglas de Firebase. El mes en curso se puede descargar igual."
+        : "No se pudieron cargar los meses cerrados."}</p>`
+    : "";
+  $("#reportes-cuerpo").innerHTML = `
+    <h2>Reportes mensuales</h2>
+    <p class="nota">Excel con el detalle de los gastos del mes, el resumen por estado, rubro y forma de pago, y los pagos parciales.
+      Cuando un mes termina se guarda solo y ya no cambia; el mes siguiente arranca su propio reporte.</p>
+    ${problema}
+    <ul class="reportes">
+      <li>
+        <div><strong>${esc(nombreMes(actual))}</strong><small>En curso · se actualiza cada vez que lo descargás</small></div>
+        <button type="button" class="primario" data-descargar="${actual}" data-tipo="vivo">Descargar Excel</button>
+      </li>
+      ${cerrados.map((c) => `
+      <li>
+        <div><strong>${esc(nombreMes(c.mes))}</strong><small>Cerrado el ${esc(fechaCorta(c.cerradoEn))}</small></div>
+        <button type="button" data-descargar="${esc(c.mes)}" data-tipo="cerrado">Descargar Excel</button>
+      </li>`).join("")}
+    </ul>
+    ${cerrados.length || errorCierres ? "" : `<p class="nota">Todavía no hay meses cerrados: el primero se guarda cuando termine este mes.</p>`}
+    <div class="acciones"><button type="button" data-accion="cerrar-reportes">Cerrar</button></div>`;
+}
+
+const esIOS = () =>
+  /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+/** Entrega el archivo: en iPhone/iPad abre "Compartir" (para guardarlo en Archivos); en el resto, lo descarga. */
+async function entregarArchivo(nombre, bytes) {
+  const archivo = new File([bytes], nombre, { type: TIPO_XLSX });
+  if (esIOS() && navigator.canShare?.({ files: [archivo] })) {
+    try {
+      await navigator.share({ files: [archivo], title: nombre });
+      return;
+    } catch (e) {
+      if (e?.name === "AbortError") return; // la persona cerró el cuadro de Compartir: no es un error
+      // si Compartir falla por otro motivo, se intenta la descarga directa
+    }
+  }
+  const url = URL.createObjectURL(archivo);
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = nombre;
+  document.body.append(enlace);
+  enlace.click();
+  enlace.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+async function descargarReporte(mes, tipo) {
+  try {
+    let reporte;
+    if (tipo === "cerrado") {
+      const cierre = cierres.find((c) => c.mes === mes);
+      if (!cierre) return aviso("Ese mes todavía no está cerrado.");
+      reporte = { mes, filas: cierre.filas, cerradoEn: cierre.cerradoEn };
+    } else {
+      mezclar();
+      reporte = { mes, filas: filasDelMes(gastos, mes, hoyISO()), generadoEn: new Date().toISOString() };
+    }
+    await entregarArchivo(nombreArchivoReporte(mes), crearReporteXlsx(reporte));
+  } catch (e) {
+    console.error(e);
+    aviso("No se pudo armar el Excel. Probá de nuevo.");
+  }
+}
+
+$("#btn-reportes").addEventListener("click", () => {
+  pintarReportes();
+  dlgReportes.showModal();
+});
+
+dlgReportes.addEventListener("click", async (ev) => {
+  if (ev.target.closest('[data-accion="cerrar-reportes"]')) return dlgReportes.close();
+  const boton = ev.target.closest("[data-descargar]");
+  if (!boton) return;
+  boton.disabled = true;
+  try {
+    await descargarReporte(boton.dataset.descargar, boton.dataset.tipo);
+  } finally {
+    boton.disabled = false;
+  }
+});
+
+// Si la app queda abierta de un día para otro, o vuelve al primer plano, se actualiza y se cierra el mes que terminó.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && usuario) render();
+});
+setInterval(() => {
+  if (usuario && !cargando) {
+    mezclar();
+    cerrarMesesTerminados();
+  }
+}, 10 * 60 * 1000);
 
 // ---- Varios --------------------------------------------------------------------------------
 

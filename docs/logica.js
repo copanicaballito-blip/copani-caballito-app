@@ -231,8 +231,6 @@ export function totalesDelMes(items, hoy) {
   return r;
 }
 
-// ---- Formato y validación ------------------------------------------------------------------
-
 // ---- Gastos recurrentes --------------------------------------------------------------------
 // Un gasto recurrente ("serie") se repite todos los meses y se guarda UNA sola vez:
 //   desde / hasta: primer y último mes ("aaaa-mm"); sin `hasta` sigue indefinidamente.
@@ -407,6 +405,76 @@ export function coincideRubro(gasto, rubro) {
   if (!rubro) return true;
   if (rubro === SIN_RUBRO) return !gasto.rubro;
   return gasto.rubro === rubro;
+}
+
+// ---- Reporte mensual -----------------------------------------------------------------------
+// Las "filas" de un mes son los gastos que muestra la pantalla de ese mes (los que vencen en él + los impagos
+// arrastrados), ya con su estado calculado. Son datos simples y autosuficientes: se guardan tal cual al cerrar
+// el mes (colección `cierres`) y de ahí sale siempre el mismo Excel, aunque después cambie la app.
+
+/** Filas del reporte de un mes: [{ fechaPago, descripcion, rubro?, formaPago?, estado, monto, pagado, saldo, recurrente?, arrastradoDe?, pagos }] */
+export function filasDelMes(gastos, mes, hoy) {
+  return gastosDelMes(gastos, mes, hoy).map(({ gasto: g, arrastradoDe }) => {
+    const fila = {
+      fechaPago: g.fechaPago,
+      descripcion: g.descripcion,
+      estado: estadoEfectivo(g, hoy),
+      monto: g.monto,
+      pagado: pagadoDe(g),
+      saldo: saldoDe(g),
+      pagos: (g.pagos ?? []).map((p) => ({ fecha: p.fecha, monto: p.monto })),
+    };
+    if (g.rubro) fila.rubro = g.rubro;
+    if (g.formaPago) fila.formaPago = g.formaPago;
+    if (g.recurrente) fila.recurrente = true;
+    if (arrastradoDe) fila.arrastradoDe = arrastradoDe;
+    return fila;
+  });
+}
+
+const totalVacio = () => ({ cantidad: 0, monto: 0, pagado: 0, saldo: 0 });
+function sumarFila(total, fila) {
+  total.cantidad += 1;
+  total.monto += fila.monto;
+  total.pagado += fila.pagado;
+  total.saldo += fila.saldo;
+}
+
+/**
+ * Totales del reporte (cantidad, monto, pagado y saldo): del mes / arrastrados / total, por estado,
+ * por rubro y por forma de pago. Son sumas simples de las filas.
+ */
+export function resumenDeFilas(filas) {
+  const r = {
+    delMes: totalVacio(),
+    arrastrados: totalVacio(),
+    total: totalVacio(),
+    porEstado: { estimado: totalVacio(), a_pagar: totalVacio(), vencido: totalVacio(), pagado: totalVacio() },
+    porRubro: [],
+    porForma: [],
+  };
+  const rubros = new Map();
+  const formas = new Map();
+  for (const fila of filas) {
+    sumarFila(fila.arrastradoDe ? r.arrastrados : r.delMes, fila);
+    sumarFila(r.total, fila);
+    sumarFila(r.porEstado[fila.estado], fila);
+    const rubro = fila.rubro ?? "";
+    if (!rubros.has(rubro)) rubros.set(rubro, totalVacio());
+    sumarFila(rubros.get(rubro), fila);
+    const forma = fila.formaPago ?? "";
+    if (!formas.has(forma)) formas.set(forma, totalVacio());
+    sumarFila(formas.get(forma), fila);
+  }
+  // Rubros por nombre (A-Z) y "Sin rubro" al final; formas de pago en el orden de la app y "Sin definir" al final.
+  r.porRubro = [...rubros]
+    .map(([clave, total]) => ({ clave, nombre: etiquetaRubro(clave), ...total }))
+    .sort((a, b) => (a.clave === "") - (b.clave === "") || (normalizar(a.nombre) < normalizar(b.nombre) ? -1 : 1));
+  const ordenForma = (clave) => (clave === "" ? FORMAS_PAGO.length : FORMAS_PAGO.indexOf(clave));
+  r.porForma = [...formas]
+    .map(([clave, total]) => ({ clave, nombre: etiquetaForma(clave), ...total }))
+    .sort((a, b) => ordenForma(a.clave) - ordenForma(b.clave));
+  return r;
 }
 
 // ---- Formato y validación ------------------------------------------------------------------
