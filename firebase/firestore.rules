@@ -15,9 +15,11 @@ service cloud.firestore {
         ];
     }
 
-    // formaPago es opcional: si falta, vale "sin_definir".
+    // formaPago y rubro son opcionales. El rubro solo se valida como texto corto (la lista de rubros
+    // vive en la app), así agregar un rubro nuevo no obliga a republicar las reglas.
     function gastoValido(g) {
-      return g.keys().hasOnly(["descripcion", "monto", "fechaPago", "estado", "pagos", "formaPago"])
+      return g.keys().hasOnly(["descripcion", "monto", "fechaPago", "estado", "pagos", "formaPago", "rubro"])
+        && g.get("rubro", "") is string && g.get("rubro", "").size() <= 40
         && g.descripcion is string && g.descripcion.size() > 0 && g.descripcion.size() <= 120
         && g.monto is int && g.monto >= 0
         && g.fechaPago is string && g.fechaPago.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")

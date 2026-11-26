@@ -1,6 +1,7 @@
 import { crearDatos } from "./datos.js";
 import {
   ESTADOS, ETIQUETAS, FORMAS_PAGO, ETIQUETAS_FORMA, etiquetaForma,
+  RUBROS, ETIQUETAS_RUBRO, etiquetaRubro, SIN_RUBRO, coincideBusqueda, coincideRubro,
   hoyISO, estadoEfectivo, ordenar, saldoDe, pagadoDe,
   mesDe, nombreMes, mesesDisponibles, gastosDelMes, totalesDelMes,
   agregarPago, quitarPago, textoVencimiento, formatoPesos, formatoFecha,
@@ -26,11 +27,18 @@ let filtro = "todos"; // filtro por estado
 let mesSel = mesDe(hoyISO()); // mes elegido ("aaaa-mm") o "todos"; empieza en el mes actual
 let detalleId = null;
 let editando = null; // gasto que se está editando; null = gasto nuevo
+let buscando = false; // ¿está abierta la lupa?
+let busqueda = ""; // texto escrito en la lupa
+let rubroSel = ""; // filtro por rubro: "" = todos, SIN_RUBRO = sin rubro, o la clave de un rubro
 
-// Opciones de forma de pago del formulario
+// Opciones de forma de pago y de rubro (formulario y buscador)
 formGasto.formaPago.innerHTML =
   `<option value="">Sin definir</option>` +
   FORMAS_PAGO.map((k) => `<option value="${k}">${esc(ETIQUETAS_FORMA[k])}</option>`).join("");
+const opcionesRubro = RUBROS.map((k) => `<option value="${k}">${esc(ETIQUETAS_RUBRO[k])}</option>`).join("");
+formGasto.rubro.innerHTML = `<option value="">Sin rubro</option>` + opcionesRubro;
+$("#sel-rubro").innerHTML =
+  `<option value="">Todos los rubros</option><option value="${SIN_RUBRO}">Sin rubro</option>` + opcionesRubro;
 
 // ---- Inicio --------------------------------------------------------------------------------
 
@@ -75,6 +83,9 @@ async function iniciar() {
 function render() {
   $("#btn-salir").hidden = !(usuario && datos.modo === "nube");
   $("#btn-nuevo").hidden = !usuario || Boolean(errorNube);
+  const hayLista = Boolean(usuario) && !errorNube;
+  $("#btn-buscar").hidden = !hayLista;
+  $("#buscador").hidden = !(hayLista && buscando);
   if (!usuario) return pintarLogin();
   if (errorNube) return pintarError();
   if (cargando) {
@@ -148,6 +159,11 @@ function pintarError() {
     </div>`;
 }
 
+/** ¿El gasto pasa el texto de la lupa y el filtro por rubro? */
+function coincide(gasto) {
+  return coincideBusqueda(gasto, busqueda) && coincideRubro(gasto, rubroSel);
+}
+
 /** Gastos del mes elegido (con los impagos de meses anteriores arrastrados) o todos. */
 function itemsDelMes(hoy) {
   if (mesSel === "todos") return ordenar(gastos).map((gasto) => ({ gasto, arrastradoDe: null }));
@@ -160,7 +176,7 @@ function listaMeses(hoy) {
 
 function pintarLista() {
   const hoy = hoyISO();
-  const items = itemsDelMes(hoy);
+  const items = itemsDelMes(hoy).filter(({ gasto }) => coincide(gasto));
   const t = totalesDelMes(items, hoy);
   const cuenta = { todos: items.length, estimado: 0, a_pagar: 0, vencido: 0, pagado: 0 };
   for (const { gasto } of items) cuenta[estadoEfectivo(gasto, hoy)] += 1;
@@ -182,11 +198,22 @@ function pintarLista() {
     .map(([clave, texto]) => `<button type="button" data-filtro="${clave}" aria-pressed="${filtro === clave}">${texto} (${cuenta[clave]})</button>`)
     .join("");
 
-  const vacio = gastos.length === 0
-    ? "Todavía no hay gastos cargados. Tocá “+ Nuevo gasto”."
-    : mesSel !== "todos" && items.length === 0
-      ? `No hay gastos que venzan en ${esc(nombreMes(mesSel))}.`
-      : "No hay gastos en este estado.";
+  const hayFiltro = busqueda.trim() !== "" || rubroSel !== "";
+  let vacio = "No hay gastos en este estado.";
+  if (gastos.length === 0) {
+    vacio = "Todavía no hay gastos cargados. Tocá “+ Nuevo gasto”.";
+  } else if (hayFiltro && items.length === 0) {
+    // La búsqueda respeta el mes elegido; si hay coincidencias en otros meses, se ofrece verlas.
+    const enOtrosMeses = mesSel === "todos" ? 0 : gastos.filter(coincide).length;
+    vacio = enOtrosMeses
+      ? `No hay resultados en ${esc(nombreMes(mesSel))}.<br><button type="button" class="enlace" data-accion="ver-todos">Buscar en todos los meses (${enOtrosMeses})</button>`
+      : "No hay gastos que coincidan con la búsqueda.";
+  } else if (mesSel !== "todos" && items.length === 0) {
+    vacio = `No hay gastos que venzan en ${esc(nombreMes(mesSel))}.`;
+  }
+  const resultados = hayFiltro && visibles.length
+    ? `<p class="nota resultados">${visibles.length} ${visibles.length === 1 ? "resultado" : "resultados"}</p>`
+    : "";
 
   contenido.innerHTML = `
     ${barraMes}
@@ -196,6 +223,7 @@ function pintarLista() {
       <div class="dato rojo"><span>Vencido</span><strong>${formatoPesos(t.saldoVencido)}</strong><small>${t.cantidadVencidos} ${t.cantidadVencidos === 1 ? "gasto" : "gastos"}</small></div>
     </section>
     <nav class="filtros" aria-label="Filtrar por estado">${chips}</nav>
+    ${resultados}
     ${visibles.length
       ? `<ul class="lista">${visibles.map(({ gasto, arrastradoDe }) => tarjeta(gasto, hoy, arrastradoDe)).join("")}</ul>`
       : `<p class="vacio">${vacio}</p>`}`;
@@ -204,7 +232,8 @@ function pintarLista() {
 function tarjeta(g, hoy, arrastradoDe) {
   const ef = estadoEfectivo(g, hoy);
   const rel = textoVencimiento(g, hoy);
-  const forma = g.formaPago ? `<div class="forma">${esc(etiquetaForma(g.formaPago))}</div>` : "";
+  const etiquetas = [g.rubro && etiquetaRubro(g.rubro), g.formaPago && etiquetaForma(g.formaPago)].filter(Boolean);
+  const forma = etiquetas.length ? `<div class="forma">${etiquetas.map(esc).join(" · ")}</div>` : "";
   const parcial = (g.pagos ?? []).length
     ? `<div class="parcial">Pagado ${formatoPesos(pagadoDe(g))} · Saldo ${formatoPesos(saldoDe(g))}</div>`
     : "";
@@ -227,6 +256,11 @@ function tarjeta(g, hoy, arrastradoDe) {
 }
 
 contenido.addEventListener("click", (ev) => {
+  if (ev.target.closest('[data-accion="ver-todos"]')) {
+    mesSel = "todos";
+    pintarLista();
+    return;
+  }
   const mover = ev.target.closest("[data-mes-mover]");
   if (mover) {
     const meses = listaMeses(hoyISO());
@@ -285,7 +319,8 @@ function pintarDetalle() {
       <div><dt>Fecha de pago</dt><dd>${formatoFecha(g.fechaPago)}${rel ? `<br><small>${rel}</small>` : ""}</dd></div>
       <div><dt>Total pagado</dt><dd>${formatoPesos(pagadoDe(g))}</dd></div>
       <div><dt>Saldo a pagar</dt><dd>${formatoPesos(saldoDe(g))}</dd></div>
-      <div class="ancho"><dt>Forma de pago</dt><dd>${esc(etiquetaForma(g.formaPago))}</dd></div>
+      <div><dt>Rubro</dt><dd>${esc(etiquetaRubro(g.rubro))}</dd></div>
+      <div><dt>Forma de pago</dt><dd>${esc(etiquetaForma(g.formaPago))}</dd></div>
     </dl>
 
     <h3>Cambiar estado</h3>
@@ -376,6 +411,7 @@ function abrirFormulario(gasto) {
   formGasto.descripcion.value = gasto?.descripcion ?? "";
   formGasto.monto.value = gasto ? String(gasto.monto) : "";
   formGasto.fechaPago.value = gasto?.fechaPago ?? hoyISO();
+  formGasto.rubro.value = gasto?.rubro ?? "";
   formGasto.formaPago.value = gasto?.formaPago ?? "";
   formGasto.estado.value = gasto?.estado ?? "estimado";
   dlgForm.showModal();
@@ -396,6 +432,7 @@ formGasto.addEventListener("submit", (ev) => {
     descripcion: formGasto.descripcion.value.trim(),
     monto: parseMonto(formGasto.monto.value),
     fechaPago: formGasto.fechaPago.value,
+    rubro: formGasto.rubro.value,
     formaPago: formGasto.formaPago.value,
     estado: formGasto.estado.value,
   };
@@ -406,6 +443,7 @@ formGasto.addEventListener("submit", (ev) => {
   }
   const gasto = editando ? { ...editando, ...nuevo } : { ...nuevo, pagos: [] };
   if (!gasto.formaPago) delete gasto.formaPago; // "Sin definir": el campo no se guarda
+  if (!gasto.rubro) delete gasto.rubro; // "Sin rubro": el campo no se guarda
   // Se muestra el mes del gasto guardado para que se vea enseguida (antes de guardar: la lista se redibuja al guardar).
   if (mesSel !== "todos") mesSel = mesDe(gasto.fechaPago);
   guardar(gasto);
@@ -434,6 +472,32 @@ function aviso(texto) {
   clearTimeout(temporizadorAviso);
   temporizadorAviso = setTimeout(() => (toast.hidden = true), 6000);
 }
+
+// ---- Lupa: buscar y filtrar por rubro ------------------------------------------------------
+
+$("#btn-buscar").addEventListener("click", () => {
+  buscando = !buscando;
+  $("#btn-buscar").setAttribute("aria-expanded", String(buscando));
+  if (!buscando) {
+    // Al cerrar la lupa se borra la búsqueda, para no dejar gastos ocultos sin que se note.
+    busqueda = "";
+    rubroSel = "";
+    $("#buscar").value = "";
+    $("#sel-rubro").value = "";
+  }
+  render();
+  if (buscando) $("#buscar").focus();
+});
+
+$("#buscar").addEventListener("input", (ev) => {
+  busqueda = ev.target.value;
+  render();
+});
+
+$("#sel-rubro").addEventListener("change", (ev) => {
+  rubroSel = ev.target.value;
+  render();
+});
 
 $("#btn-salir").addEventListener("click", () => datos.salir());
 

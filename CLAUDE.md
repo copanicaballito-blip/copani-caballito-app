@@ -13,6 +13,8 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   Débito Automático - Galicia, Efectivo.
 - Filtro por mes: se elige el mes y se ve lo que vence ese mes. Los impagos de meses anteriores
   pasan al mes siguiente, en rojo, hasta que se pagan.
+- Rubro de cada gasto (opcional): Productos, Servicio, Alquiler, Compra insumos, Tarjeta, Gasto Bancario, Impuesto.
+- Lupa en la barra: busca por descripción, rubro, forma de pago o monto, y filtra por rubro.
 
 ## Decisiones
 - "Vencido" NO se elige: se calcula (no pagado + fecha de pago anterior a hoy). El dueño dijo "tres estados"
@@ -24,6 +26,16 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   no se guarda. Se interpretó "los pagos" del dueño como los gastos por pagar; los pagos parciales no
   llevan forma de pago propia (si se quiere, agregar `formaPago` dentro de cada elemento de `pagos`).
   Las reglas de Firestore (`firebase/firestore.rules`) deben permitir ese campo: hay que republicarlas.
+- Rubro: campo `rubro` del gasto (claves `productos`, `servicio`, `alquiler`, `compra_insumos`, `tarjeta`,
+  `gasto_bancario`, `impuesto`; ver `RUBROS` en `docs/logica.js`). Opcional: "Sin rubro" = el campo no se guarda.
+  Las reglas de Firestore solo lo validan como texto de hasta 40 letras (la lista vive en la app), así que
+  agregar un rubro nuevo = editar `RUBROS`/`ETIQUETAS_RUBRO` en `logica.js`, sin republicar reglas.
+- Lupa (`coincideBusqueda`, `coincideRubro` en `docs/logica.js`, con tests): todas las palabras escritas deben
+  estar (en cualquier orden, sin tildes ni mayúsculas) en descripción, rubro, forma de pago o monto.
+  La búsqueda y el rubro se COMBINAN con el mes elegido y el estado; si no hay resultados en el mes pero sí en
+  otros, se ofrece "Buscar en todos los meses". Los totales del resumen se calculan sobre lo filtrado
+  (mes + búsqueda + rubro, sin el filtro de estado). Al cerrar la lupa se borra la búsqueda.
+  El campo de búsqueda vive fuera de `#contenido` para no perder el foco al redibujar la lista.
 - Filtro por mes (`mesesDisponibles`, `gastosDelMes`, `totalesDelMes` en `docs/logica.js`, con tests):
   empieza en el mes actual; también hay "Todos los meses". Un mes muestra lo que vence en él más los
   impagos de meses anteriores ("arrastrados", siempre vencidos = rojo). El arrastre llega hasta el mes actual:

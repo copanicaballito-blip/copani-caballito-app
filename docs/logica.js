@@ -26,6 +26,26 @@ export function etiquetaForma(clave) {
   return ETIQUETAS_FORMA[clave] ?? "Sin definir";
 }
 
+/** Rubros de un gasto (opcional: un gasto puede estar "sin rubro"). */
+export const RUBROS = ["productos", "servicio", "alquiler", "compra_insumos", "tarjeta", "gasto_bancario", "impuesto"];
+
+export const ETIQUETAS_RUBRO = {
+  productos: "Productos",
+  servicio: "Servicio",
+  alquiler: "Alquiler",
+  compra_insumos: "Compra insumos",
+  tarjeta: "Tarjeta",
+  gasto_bancario: "Gasto Bancario",
+  impuesto: "Impuesto",
+};
+
+export function etiquetaRubro(clave) {
+  return ETIQUETAS_RUBRO[clave] ?? "Sin rubro";
+}
+
+/** Valor especial del filtro por rubro para ver los gastos que todavía no tienen rubro. */
+export const SIN_RUBRO = "__sin";
+
 /** Fecha de hoy como "aaaa-mm-dd" en hora local. */
 export function hoyISO(ahora = new Date()) {
   const mes = String(ahora.getMonth() + 1).padStart(2, "0");
@@ -199,6 +219,40 @@ export function totalesDelMes(items, hoy) {
 
 // ---- Formato y validación ------------------------------------------------------------------
 
+// ---- Búsqueda y filtro por rubro -----------------------------------------------------------
+
+/** Minúsculas y sin tildes: "Córdoba" -> "cordoba". */
+function normalizar(texto) {
+  return String(texto ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+/**
+ * ¿El gasto coincide con lo que se escribió en la lupa? Todas las palabras tienen que aparecer
+ * (en cualquier orden) en la descripción, el rubro, la forma de pago o el monto. Sin importar
+ * mayúsculas ni tildes. Un texto vacío coincide con todo.
+ */
+export function coincideBusqueda(gasto, texto) {
+  const palabras = normalizar(texto).split(/\s+/).filter(Boolean);
+  if (palabras.length === 0) return true;
+  const pajar = normalizar([
+    gasto.descripcion,
+    etiquetaRubro(gasto.rubro),
+    etiquetaForma(gasto.formaPago),
+    String(gasto.monto),
+    formatoPesos(gasto.monto),
+  ].join(" "));
+  return palabras.every((p) => pajar.includes(p));
+}
+
+/** Filtro por rubro: "" = todos, SIN_RUBRO = los que no tienen rubro, o la clave de un rubro. */
+export function coincideRubro(gasto, rubro) {
+  if (!rubro) return true;
+  if (rubro === SIN_RUBRO) return !gasto.rubro;
+  return gasto.rubro === rubro;
+}
+
+// ---- Formato y validación ------------------------------------------------------------------
+
 /** 1234567 -> "$ 1.234.567" */
 export function formatoPesos(n) {
   const signo = n < 0 ? "-" : "";
@@ -228,6 +282,7 @@ export function validarGasto(g) {
   if (!fechaValida(g.fechaPago)) return "Elegí la fecha de pago.";
   if (!ESTADOS.includes(g.estado)) return "Elegí un estado.";
   if (g.formaPago && !FORMAS_PAGO.includes(g.formaPago)) return "Elegí una forma de pago válida.";
+  if (g.rubro && !RUBROS.includes(g.rubro)) return "Elegí un rubro válido.";
   return null;
 }
 

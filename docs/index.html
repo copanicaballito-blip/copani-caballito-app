@@ -16,11 +16,22 @@
 <body>
   <header class="barra">
     <h1>Copani Caballito <small>Gastos</small></h1>
-    <button id="btn-salir" class="texto" hidden>Salir</button>
+    <div class="barra-botones">
+      <button id="btn-buscar" class="icono" aria-label="Buscar gastos" aria-expanded="false" hidden>
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>
+      </button>
+      <button id="btn-salir" class="texto" hidden>Salir</button>
+    </div>
   </header>
 
   <div id="aviso-demo" class="aviso-demo" hidden>
     Modo demo: los datos son de ejemplo y quedan solo en este navegador.
+  </div>
+
+  <!-- Búsqueda (lupa): queda fuera de #contenido para no perder el foco mientras se escribe -->
+  <div id="buscador" class="buscador" role="search" hidden>
+    <input id="buscar" type="search" placeholder="Buscar por descripción, rubro, monto…" autocomplete="off" enterkeyhint="search" aria-label="Buscar gastos">
+    <select id="sel-rubro" aria-label="Filtrar por rubro"></select>
   </div>
 
   <main id="contenido"></main>
@@ -45,6 +56,9 @@
       </label>
       <label>Fecha de pago
         <input name="fechaPago" type="date" required>
+      </label>
+      <label>Rubro
+        <select name="rubro"></select>
       </label>
       <label>Forma de pago
         <select name="formaPago"></select>

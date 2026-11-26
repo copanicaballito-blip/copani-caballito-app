@@ -4,6 +4,7 @@ import {
   hoyISO, estadoEfectivo, pagadoDe, saldoDe, agregarPago, quitarPago, totales, ordenar,
   textoVencimiento, formatoPesos, formatoFecha, parseMonto, validarGasto, validarPago, diasHasta,
   FORMAS_PAGO, etiquetaForma, mesDe, nombreMes, mesesDisponibles, gastosDelMes, totalesDelMes,
+  RUBROS, etiquetaRubro, SIN_RUBRO, coincideBusqueda, coincideRubro,
 } from "../docs/logica.js";
 
 const HOY = "2026-12-10";
@@ -134,6 +135,45 @@ test("forma de pago: las 5 opciones con sus nombres y validación", () => {
   assert.equal(validarGasto({ ...ok, formaPago: "" }), null); // opcional
   assert.equal(validarGasto(ok), null);
   assert.match(validarGasto({ ...ok, formaPago: "cheque" }), /forma de pago/);
+});
+
+// ---- Rubros y búsqueda ---------------------------------------------------------------------
+
+test("rubros: las 7 opciones con sus nombres y validación", () => {
+  assert.deepEqual(RUBROS.map(etiquetaRubro), [
+    "Productos", "Servicio", "Alquiler", "Compra insumos", "Tarjeta", "Gasto Bancario", "Impuesto",
+  ]);
+  assert.equal(etiquetaRubro(undefined), "Sin rubro");
+  const ok = { descripcion: "Luz", monto: 100, fechaPago: "2026-12-01", estado: "estimado" };
+  assert.equal(validarGasto({ ...ok, rubro: "impuesto" }), null);
+  assert.equal(validarGasto({ ...ok, rubro: "" }), null); // opcional
+  assert.equal(validarGasto(ok), null);
+  assert.match(validarGasto({ ...ok, rubro: "otro" }), /rubro/);
+});
+
+test("filtro por rubro: todos, sin rubro o uno en particular", () => {
+  const a = gasto({ rubro: "alquiler" });
+  const s = gasto({});
+  assert.ok(coincideRubro(a, "") && coincideRubro(s, ""));
+  assert.ok(coincideRubro(a, "alquiler") && !coincideRubro(s, "alquiler"));
+  assert.ok(coincideRubro(s, SIN_RUBRO) && !coincideRubro(a, SIN_RUBRO));
+});
+
+test("búsqueda: sin tildes ni mayúsculas, varias palabras, y por rubro, forma de pago o monto", () => {
+  const g = gasto({ descripcion: "Alquiler Local Córdoba", monto: 450000, rubro: "gasto_bancario", formaPago: "debito_galicia" });
+  assert.ok(coincideBusqueda(g, ""));
+  assert.ok(coincideBusqueda(g, "   "));
+  assert.ok(coincideBusqueda(g, "cordoba"));
+  assert.ok(coincideBusqueda(g, "CÓRDOBA"));
+  assert.ok(coincideBusqueda(g, "local alquiler")); // en cualquier orden
+  assert.ok(coincideBusqueda(g, "bancario")); // por rubro
+  assert.ok(coincideBusqueda(g, "debito")); // por forma de pago
+  assert.ok(coincideBusqueda(g, "galicia"));
+  assert.ok(coincideBusqueda(g, "450000")); // por monto
+  assert.ok(coincideBusqueda(g, "450.000"));
+  assert.ok(!coincideBusqueda(g, "luz"));
+  assert.ok(!coincideBusqueda(g, "cordoba luz")); // todas las palabras deben estar
+  assert.ok(coincideBusqueda(gasto({ descripcion: "X" }), "sin rubro")); // sin rubro también se puede buscar
 });
 
 // ---- Filtro por mes ------------------------------------------------------------------------
