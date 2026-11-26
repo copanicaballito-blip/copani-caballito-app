@@ -13,7 +13,8 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   Débito Automático - Galicia, Efectivo.
 - Filtro por mes: se elige el mes y se ve lo que vence ese mes. Los impagos de meses anteriores
   pasan al mes siguiente, en rojo, hasta que se pagan.
-- Rubro de cada gasto (opcional): Productos, Servicio, Alquiler, Compra insumos, Tarjeta, Gasto Bancario, Impuesto.
+- Rubro de cada gasto (opcional): Productos, Servicios, Alquiler, Compra insumos, Tarjeta, Gastos Bancarios,
+  Impuesto, Socios, Préstamos, Empleados.
 - Lupa en la barra: busca por descripción, rubro, forma de pago o monto, y filtra por rubro.
 
 ## Decisiones
@@ -27,7 +28,10 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   llevan forma de pago propia (si se quiere, agregar `formaPago` dentro de cada elemento de `pagos`).
   Las reglas de Firestore (`firebase/firestore.rules`) deben permitir ese campo: hay que republicarlas.
 - Rubro: campo `rubro` del gasto (claves `productos`, `servicio`, `alquiler`, `compra_insumos`, `tarjeta`,
-  `gasto_bancario`, `impuesto`; ver `RUBROS` en `docs/logica.js`). Opcional: "Sin rubro" = el campo no se guarda.
+  `gasto_bancario`, `impuesto`, `socios`, `prestamos`, `empleados`; ver `RUBROS` en `docs/logica.js`).
+  Opcional: "Sin rubro" = el campo no se guarda. Renombrar un rubro = cambiar SOLO su etiqueta en
+  `ETIQUETAS_RUBRO` (las claves guardadas en la base no se tocan: "Servicios" sigue siendo la clave `servicio`
+  y "Gastos Bancarios" la clave `gasto_bancario`).
   Las reglas de Firestore solo lo validan como texto de hasta 40 letras (la lista vive en la app), así que
   agregar un rubro nuevo = editar `RUBROS`/`ETIQUETAS_RUBRO` en `logica.js`, sin republicar reglas.
 - Lupa (`coincideBusqueda`, `coincideRubro` en `docs/logica.js`, con tests): todas las palabras escritas deben

@@ -24,8 +24,8 @@ Manual - Galicia, Débito Automático - Galicia o Efectivo.
 
 ## Rubros y lupa
 
-Cada gasto puede tener un rubro (opcional): Productos, Servicio, Alquiler, Compra insumos, Tarjeta,
-Gasto Bancario o Impuesto.
+Cada gasto puede tener un rubro (opcional): Productos, Servicios, Alquiler, Compra insumos, Tarjeta,
+Gastos Bancarios, Impuesto, Socios, Préstamos o Empleados.
 
 La **lupa** (arriba a la derecha) abre el buscador: se puede escribir parte de la descripción, el rubro,
 la forma de pago o el monto, y filtrar por rubro. La búsqueda respeta el mes elegido; si no hay

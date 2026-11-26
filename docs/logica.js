@@ -27,16 +27,24 @@ export function etiquetaForma(clave) {
 }
 
 /** Rubros de un gasto (opcional: un gasto puede estar "sin rubro"). */
-export const RUBROS = ["productos", "servicio", "alquiler", "compra_insumos", "tarjeta", "gasto_bancario", "impuesto"];
+// OJO: la clave (izquierda) es lo que se guarda en la base y NO se cambia nunca, para no perder el rubro de
+// los gastos ya cargados. Lo que se ve en pantalla es la etiqueta (derecha), que sí se puede renombrar.
+export const RUBROS = [
+  "productos", "servicio", "alquiler", "compra_insumos", "tarjeta", "gasto_bancario", "impuesto",
+  "socios", "prestamos", "empleados",
+];
 
 export const ETIQUETAS_RUBRO = {
   productos: "Productos",
-  servicio: "Servicio",
+  servicio: "Servicios",
   alquiler: "Alquiler",
   compra_insumos: "Compra insumos",
   tarjeta: "Tarjeta",
-  gasto_bancario: "Gasto Bancario",
+  gasto_bancario: "Gastos Bancarios",
   impuesto: "Impuesto",
+  socios: "Socios",
+  prestamos: "Préstamos",
+  empleados: "Empleados",
 };
 
 export function etiquetaRubro(clave) {

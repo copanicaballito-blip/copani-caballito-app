@@ -139,10 +139,17 @@ test("forma de pago: las 5 opciones con sus nombres y validación", () => {
 
 // ---- Rubros y búsqueda ---------------------------------------------------------------------
 
-test("rubros: las 7 opciones con sus nombres y validación", () => {
+test("rubros: las 10 opciones con sus nombres y validación", () => {
   assert.deepEqual(RUBROS.map(etiquetaRubro), [
-    "Productos", "Servicio", "Alquiler", "Compra insumos", "Tarjeta", "Gasto Bancario", "Impuesto",
+    "Productos", "Servicios", "Alquiler", "Compra insumos", "Tarjeta", "Gastos Bancarios", "Impuesto",
+    "Socios", "Préstamos", "Empleados",
   ]);
+  // Los gastos ya guardados con las claves de antes siguen teniendo rubro (solo cambió el nombre que se ve)
+  assert.equal(etiquetaRubro("servicio"), "Servicios");
+  assert.equal(etiquetaRubro("gasto_bancario"), "Gastos Bancarios");
+  assert.equal(validarGasto({ descripcion: "Luz", monto: 1, fechaPago: "2026-12-01", estado: "estimado", rubro: "servicio" }), null);
+  assert.equal(validarGasto({ descripcion: "Cuota", monto: 1, fechaPago: "2026-12-01", estado: "estimado", rubro: "prestamos" }), null);
+  assert.ok(coincideBusqueda({ descripcion: "Cuota", monto: 1, rubro: "prestamos" }, "prestamos")); // sin tilde también
   assert.equal(etiquetaRubro(undefined), "Sin rubro");
   const ok = { descripcion: "Luz", monto: 100, fechaPago: "2026-12-01", estado: "estimado" };
   assert.equal(validarGasto({ ...ok, rubro: "impuesto" }), null);
