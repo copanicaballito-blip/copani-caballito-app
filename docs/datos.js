@@ -1,15 +1,22 @@
 // Acceso a los datos. Dos modos con la misma interfaz:
 //  - "nube": Firebase (login con email y contraseña + Firestore). Se usa si firebase-config.js tiene apiKey.
 //  - "demo": datos de ejemplo en este navegador, sin login. Se usa mientras no haya apiKey.
+//
+// Dos colecciones: `gastos` (gastos de una sola vez) y `recurrentes` (una serie por cada gasto que se
+// repite todos los meses; ver "Gastos recurrentes" en logica.js).
 import { firebaseConfig } from "./firebase-config.js";
-import { hoyISO } from "./logica.js";
+import { hoyISO, mesDe, crearSerie } from "./logica.js";
 
 const VERSION_FIREBASE = "12.19.0"; // la misma que usa el formulario web de Lavanda Suite
 const CLAVE_DEMO = "copani-demo-gastos-v1";
+const CLAVE_DEMO_REC = "copani-demo-recurrentes-v1";
 
 export async function crearDatos() {
   return firebaseConfig.apiKey ? crearNube() : crearDemo();
 }
+
+// Firestore no acepta campos "undefined": se limpian dando una vuelta por JSON.
+const limpio = (objeto) => JSON.parse(JSON.stringify(objeto));
 
 // ---- Nube (Firebase) -----------------------------------------------------------------------
 
@@ -24,6 +31,8 @@ async function crearNube() {
   const a = auth.getAuth(app);
   const db = fs.getFirestore(app);
   const coleccion = fs.collection(db, "gastos");
+  const coleccionRec = fs.collection(db, "recurrentes");
+  const lista = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
   return {
     modo: "nube",
@@ -39,21 +48,45 @@ async function crearNube() {
     restablecerClave(email) {
       return auth.sendPasswordResetEmail(a, email);
     },
+
+    // Gastos de una sola vez
     escucharGastos(cb, cbError) {
-      return fs.onSnapshot(
-        coleccion,
-        (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-        cbError,
-      );
+      return fs.onSnapshot(coleccion, (snap) => cb(lista(snap)), cbError);
     },
     async guardar(gasto) {
       const { id, ...datos } = gasto; // el id es el nombre del documento, no un campo
       const ref = id ? fs.doc(db, "gastos", id) : fs.doc(coleccion);
-      await fs.setDoc(ref, JSON.parse(JSON.stringify(datos))); // Firestore no acepta campos "undefined"
+      await fs.setDoc(ref, limpio(datos));
       return ref.id;
     },
     borrar(id) {
       return fs.deleteDoc(fs.doc(db, "gastos", id));
+    },
+
+    // Gastos recurrentes (una serie por gasto)
+    escucharRecurrentes(cb, cbError) {
+      return fs.onSnapshot(coleccionRec, (snap) => cb(lista(snap)), cbError);
+    },
+    async guardarSerie(serie) {
+      const { id, ...datos } = serie;
+      const ref = id ? fs.doc(db, "recurrentes", id) : fs.doc(coleccionRec);
+      await fs.setDoc(ref, limpio(datos));
+      return ref.id;
+    },
+    /** Guarda solo el estado y los pagos de un mes: no pisa lo que otra persona cambie en otros meses. */
+    guardarOcurrencia(serieId, mes, ocurrencia) {
+      return fs.updateDoc(fs.doc(db, "recurrentes", serieId), new fs.FieldPath("meses", mes), limpio(ocurrencia));
+    },
+    borrarSerie(id) {
+      return fs.deleteDoc(fs.doc(db, "recurrentes", id));
+    },
+    /** Pasa un gasto de una sola vez a recurrente: crea la serie y borra el gasto, todo junto. */
+    async convertirEnRecurrente(gastoId, serie) {
+      const { id, ...datos } = serie;
+      const lote = fs.writeBatch(db);
+      lote.set(fs.doc(coleccionRec), limpio(datos));
+      lote.delete(fs.doc(db, "gastos", gastoId));
+      await lote.commit();
     },
   };
 }
@@ -74,24 +107,46 @@ function ejemplos() {
   ];
 }
 
+function ejemplosRecurrentes() {
+  const mesPasado = new Date();
+  mesPasado.setDate(1);
+  mesPasado.setMonth(mesPasado.getMonth() - 1);
+  const fecha = `${mesDe(hoyISO(mesPasado))}-10`;
+  const serie = crearSerie({
+    descripcion: "Expensas (ejemplo)", monto: 85000, fechaPago: fecha, estado: "a_pagar",
+    rubro: "servicio", formaPago: "debito_galicia", pagos: [],
+  });
+  return [{ id: "rec1", ...serie }];
+}
+
 function crearDemo() {
-  let gastos;
-  try {
-    const guardado = localStorage.getItem(CLAVE_DEMO);
-    gastos = guardado ? JSON.parse(guardado) : ejemplos();
-  } catch {
-    gastos = ejemplos();
-  }
+  const leer = (clave) => {
+    try {
+      return localStorage.getItem(clave);
+    } catch {
+      return null;
+    }
+  };
+  const guardadoGastos = leer(CLAVE_DEMO);
+  const guardadoRec = leer(CLAVE_DEMO_REC);
+  let gastos = guardadoGastos ? JSON.parse(guardadoGastos) : ejemplos();
+  // Los ejemplos recurrentes solo aparecen la primera vez (si ya había gastos guardados, no se agregan).
+  let series = guardadoRec ? JSON.parse(guardadoRec) : guardadoGastos ? [] : ejemplosRecurrentes();
+
   const oyentes = new Set();
-  const copia = () => JSON.parse(JSON.stringify(gastos));
+  const oyentesRec = new Set();
+  const copia = (x) => JSON.parse(JSON.stringify(x));
   const cambiaron = () => {
     try {
       localStorage.setItem(CLAVE_DEMO, JSON.stringify(gastos));
+      localStorage.setItem(CLAVE_DEMO_REC, JSON.stringify(series));
     } catch {
       // sin almacenamiento: los datos de la demo viven solo mientras la página está abierta
     }
-    oyentes.forEach((cb) => cb(copia()));
+    oyentes.forEach((cb) => cb(copia(gastos)));
+    oyentesRec.forEach((cb) => cb(copia(series)));
   };
+  const nuevoId = (prefijo) => `${prefijo}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
   return {
     modo: "demo",
@@ -101,20 +156,48 @@ function crearDemo() {
     async ingresar() {},
     async salir() {},
     async restablecerClave() {},
+
     escucharGastos(cb) {
       oyentes.add(cb);
-      cb(copia());
+      cb(copia(gastos));
       return () => oyentes.delete(cb);
     },
     async guardar(gasto) {
       const { id, ...datos } = gasto;
-      const nuevoId = id ?? `demo-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-      gastos = [...gastos.filter((g) => g.id !== nuevoId), { id: nuevoId, ...datos }];
+      const idFinal = id ?? nuevoId("demo");
+      gastos = [...gastos.filter((g) => g.id !== idFinal), { id: idFinal, ...datos }];
       cambiaron();
-      return nuevoId;
+      return idFinal;
     },
     async borrar(id) {
       gastos = gastos.filter((g) => g.id !== id);
+      cambiaron();
+    },
+
+    escucharRecurrentes(cb) {
+      oyentesRec.add(cb);
+      cb(copia(series));
+      return () => oyentesRec.delete(cb);
+    },
+    async guardarSerie(serie) {
+      const { id, ...datos } = serie;
+      const idFinal = id ?? nuevoId("rec");
+      series = [...series.filter((s) => s.id !== idFinal), { id: idFinal, ...copia(datos) }];
+      cambiaron();
+      return idFinal;
+    },
+    async guardarOcurrencia(serieId, mes, ocurrencia) {
+      series = series.map((s) => (s.id === serieId ? { ...s, meses: { ...s.meses, [mes]: copia(ocurrencia) } } : s));
+      cambiaron();
+    },
+    async borrarSerie(id) {
+      series = series.filter((s) => s.id !== id);
+      cambiaron();
+    },
+    async convertirEnRecurrente(gastoId, serie) {
+      const { id, ...datos } = serie;
+      gastos = gastos.filter((g) => g.id !== gastoId);
+      series = [...series, { id: nuevoId("rec"), ...copia(datos) }];
       cambiaron();
     },
   };

@@ -12,6 +12,17 @@ Funciona igual en iPhone y Android: se abre desde el navegador y se instala en l
 | Pagado | verde | a mano, o solo cuando los pagos parciales completan el monto |
 | Vencido | rojo | solo: pasó la fecha de pago y el gasto no está pagado |
 
+## Gastos recurrentes
+
+Para un gasto que se paga **todos los meses** (Alquiler, Empleados, Expensas, servicios…) se tilda
+**"Se repite todos los meses"** al cargarlo, o al editarlo si ya existía. Cada mes aparece solo, con los
+mismos datos. El estado (Estimado / A pagar / Pagado) y los pagos parciales son de cada mes.
+
+- **Editar** un mes cambia ese mes y **los siguientes**; los meses anteriores no cambian. Los meses
+  siguientes que ya estaban pagados tampoco (se conserva lo que se pagó).
+- **Dejar de repetir:** este mes y los anteriores se conservan; desde el mes siguiente ya no aparece.
+- **Eliminar todo:** borra el gasto recurrente completo, con todos sus meses.
+
 ## Filtro por mes
 
 Arriba de la lista se elige el mes (o **Todos los meses**). Se muestra lo que **vence ese mes**. Los gastos

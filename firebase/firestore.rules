@@ -28,9 +28,28 @@ service cloud.firestore {
         && g.pagos is list && g.pagos.size() <= 200;
     }
 
+    function mesValido(m) {
+      return m is string && m.matches("^[0-9]{4}-[0-9]{2}$");
+    }
+
+    // Gasto recurrente (una serie por gasto): primer/último mes, plantilla de cada período y datos de cada mes.
+    // El detalle de `cambios` y `meses` lo controla la app; acá se valida la forma general.
+    function recurrenteValido(r) {
+      return r.keys().hasOnly(["desde", "hasta", "cambios", "meses"])
+        && mesValido(r.desde)
+        && mesValido(r.get("hasta", "2999-12"))
+        && r.cambios is list && r.cambios.size() >= 1 && r.cambios.size() <= 200
+        && r.meses is map && r.meses.keys().size() <= 600;
+    }
+
     match /gastos/{id} {
       allow read, delete: if autorizado();
       allow create, update: if autorizado() && gastoValido(request.resource.data);
+    }
+
+    match /recurrentes/{id} {
+      allow read, delete: if autorizado();
+      allow create, update: if autorizado() && recurrenteValido(request.resource.data);
     }
   }
 }

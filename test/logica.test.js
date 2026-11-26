@@ -5,6 +5,8 @@ import {
   textoVencimiento, formatoPesos, formatoFecha, parseMonto, validarGasto, validarPago, diasHasta,
   FORMAS_PAGO, etiquetaForma, mesDe, nombreMes, mesesDisponibles, gastosDelMes, totalesDelMes,
   RUBROS, etiquetaRubro, SIN_RUBRO, coincideBusqueda, coincideRubro, rubrosOrdenados,
+  siguienteMes, diasDelMes, fechaDeMes, instanciaDe, expandirRecurrentes, crearSerie, aplicarEdicion,
+  conOcurrencia, dejarDeRepetir,
 } from "../docs/logica.js";
 
 const HOY = "2026-12-10";
@@ -138,6 +140,144 @@ test("forma de pago: las 5 opciones con sus nombres y validación", () => {
 });
 
 // ---- Rubros y búsqueda ---------------------------------------------------------------------
+
+// ---- Gastos recurrentes --------------------------------------------------------------------
+
+// Alquiler que arranca en octubre 2026 (hoy es 2026-12-10), día 10, "A pagar".
+const serieBase = (extra = {}) => ({
+  id: "s1",
+  ...crearSerie({
+    descripcion: "Alquiler", monto: 100000, fechaPago: "2026-10-10", estado: "a_pagar",
+    rubro: "alquiler", formaPago: "manual_galicia", pagos: [],
+  }),
+  ...extra,
+});
+const datosEdicion = (extra = {}) => ({
+  descripcion: "Alquiler", monto: 100000, fechaPago: "2026-12-10", rubro: "alquiler",
+  formaPago: "manual_galicia", estado: "a_pagar", ...extra,
+});
+
+test("recurrente: días de cada mes y día 31 en meses cortos", () => {
+  assert.equal(diasDelMes("2027-02"), 28);
+  assert.equal(diasDelMes("2028-02"), 29);
+  assert.equal(diasDelMes("2026-12"), 31);
+  assert.equal(fechaDeMes("2027-02", 31), "2027-02-28");
+  assert.equal(fechaDeMes("2026-11", 31), "2026-11-30");
+  assert.equal(fechaDeMes("2026-11", 5), "2026-11-05");
+  assert.equal(siguienteMes("2026-12"), "2027-01");
+});
+
+test("recurrente: se repite cada mes con los mismos datos, hasta el mes siguiente al actual", () => {
+  const gastos = expandirRecurrentes([serieBase()], HOY);
+  assert.deepEqual(gastos.map((g) => g.fechaPago), ["2026-10-10", "2026-11-10", "2026-12-10", "2027-01-10"]);
+  for (const g of gastos) {
+    assert.equal(g.descripcion, "Alquiler");
+    assert.equal(g.monto, 100000);
+    assert.equal(g.rubro, "alquiler");
+    assert.equal(g.formaPago, "manual_galicia");
+    assert.equal(g.estado, "a_pagar"); // cada mes nuevo arranca con el estado inicial de la plantilla
+    assert.deepEqual(g.pagos, []);
+    assert.equal(g.recurrente, true);
+    assert.equal(g.serieId, "s1");
+  }
+  assert.equal(gastos[0].id, "s1~2026-10");
+});
+
+test("recurrente: una serie futura muestra su primer mes y `hasta` la corta", () => {
+  const futura = serieBase(crearSerie({ descripcion: "Seguro", monto: 5, fechaPago: "2027-03-05", estado: "estimado", pagos: [] }));
+  assert.deepEqual(expandirRecurrentes([futura], HOY).map((g) => g.mes), ["2027-03"]);
+  assert.equal(instanciaDe(futura, "2027-03").estado, "estimado");
+  const cortada = dejarDeRepetir(serieBase(), "2026-11");
+  assert.deepEqual(expandirRecurrentes([cortada], HOY).map((g) => g.mes), ["2026-10", "2026-11"]);
+});
+
+test("recurrente: un gasto del día 31 cae el último día de los meses cortos", () => {
+  const s = serieBase(crearSerie({ descripcion: "Cierre", monto: 1, fechaPago: "2026-12-31", estado: "estimado", pagos: [] }));
+  assert.equal(instanciaDe(s, "2027-02").fechaPago, "2027-02-28");
+  assert.equal(instanciaDe(s, "2027-03").fechaPago, "2027-03-31");
+});
+
+test("recurrente: editar un mes cambia ese mes y los siguientes, no los anteriores", () => {
+  let s = serieBase();
+  s = aplicarEdicion(s, "2026-12", datosEdicion({ descripcion: "Alquiler local", monto: 120000, fechaPago: "2026-12-15" }));
+  assert.equal(instanciaDe(s, "2026-10").monto, 100000);
+  assert.equal(instanciaDe(s, "2026-11").monto, 100000);
+  assert.equal(instanciaDe(s, "2026-11").descripcion, "Alquiler");
+  assert.equal(instanciaDe(s, "2026-12").monto, 120000);
+  assert.equal(instanciaDe(s, "2027-01").monto, 120000);
+  assert.equal(instanciaDe(s, "2027-01").descripcion, "Alquiler local");
+  assert.equal(instanciaDe(s, "2027-01").fechaPago, "2027-01-15");
+  // y así sucesivamente: una edición posterior sigue cambiando lo que viene
+  s = aplicarEdicion(s, "2027-01", datosEdicion({ descripcion: "Alquiler local", monto: 130000, fechaPago: "2027-01-15" }));
+  assert.equal(instanciaDe(s, "2026-12").monto, 120000);
+  assert.equal(instanciaDe(s, "2027-01").monto, 130000);
+  assert.equal(instanciaDe(s, "2027-06").monto, 130000);
+});
+
+test("recurrente: editar un mes anterior reemplaza los cambios que había más adelante", () => {
+  let s = serieBase();
+  s = aplicarEdicion(s, "2027-02", datosEdicion({ monto: 150000, fechaPago: "2027-02-10" }));
+  assert.equal(instanciaDe(s, "2027-03").monto, 150000);
+  s = aplicarEdicion(s, "2026-11", datosEdicion({ monto: 90000, fechaPago: "2026-11-10" }));
+  assert.equal(instanciaDe(s, "2026-10").monto, 100000);
+  assert.equal(instanciaDe(s, "2026-11").monto, 90000);
+  assert.equal(instanciaDe(s, "2027-03").monto, 90000);
+});
+
+test("recurrente: el estado inicial de los meses siguientes se puede cambiar; 'Pagado' no es un estado inicial", () => {
+  let s = serieBase();
+  s = aplicarEdicion(s, "2026-12", datosEdicion({ estado: "estimado" }));
+  assert.equal(instanciaDe(s, "2027-01").estado, "estimado");
+  assert.equal(instanciaDe(s, "2026-12").estado, "estimado");
+  s = aplicarEdicion(s, "2027-01", datosEdicion({ fechaPago: "2027-01-10", estado: "pagado" }));
+  assert.equal(instanciaDe(s, "2027-01").estado, "pagado");
+  assert.equal(instanciaDe(s, "2027-02").estado, "estimado"); // el mes siguiente no nace pagado
+});
+
+test("recurrente: el estado y los pagos parciales son de cada mes", () => {
+  let s = serieBase();
+  s = conOcurrencia(s, "2026-11", { estado: "a_pagar", pagos: [{ fecha: "2026-11-12", monto: 40000 }] });
+  const nov = instanciaDe(s, "2026-11");
+  const dic = instanciaDe(s, "2026-12");
+  assert.equal(saldoDe(nov), 60000);
+  assert.equal(pagadoDe(nov), 40000);
+  assert.equal(saldoDe(dic), 100000);
+  assert.deepEqual(dic.pagos, []);
+  // completar el pago deja pagado solo ese mes
+  s = conOcurrencia(s, "2026-11", agregarPago(nov, { fecha: "2026-11-20", monto: 60000 }));
+  assert.equal(instanciaDe(s, "2026-11").estado, "pagado");
+  assert.equal(instanciaDe(s, "2026-12").estado, "a_pagar");
+});
+
+test("recurrente: los meses ya pagados no cambian si se edita un mes anterior", () => {
+  let s = serieBase();
+  s = conOcurrencia(s, "2026-12", { estado: "pagado", pagos: [] }); // diciembre pagado a 100.000
+  s = aplicarEdicion(s, "2026-11", datosEdicion({ monto: 90000, fechaPago: "2026-11-10" }));
+  assert.equal(instanciaDe(s, "2026-11").monto, 90000);
+  assert.equal(instanciaDe(s, "2026-12").monto, 100000); // lo pagado se conserva
+  assert.equal(instanciaDe(s, "2026-12").estado, "pagado");
+  assert.equal(instanciaDe(s, "2027-01").monto, 90000); // lo que falta pagar sí sigue el cambio
+  // si diciembre vuelve a quedar impago, pasa a seguir la plantilla
+  s = conOcurrencia(s, "2026-12", { estado: "a_pagar", pagos: [] });
+  assert.equal(instanciaDe(s, "2026-12").monto, 90000);
+});
+
+test("recurrente: editar un mes ya pagado conserva lo nuevo aunque después se edite un mes anterior", () => {
+  let s = serieBase();
+  s = conOcurrencia(s, "2026-12", { estado: "pagado", pagos: [] });
+  s = aplicarEdicion(s, "2026-12", datosEdicion({ monto: 111000, estado: "pagado" }));
+  assert.equal(instanciaDe(s, "2026-12").monto, 111000);
+  s = aplicarEdicion(s, "2026-11", datosEdicion({ monto: 90000, fechaPago: "2026-11-10" }));
+  assert.equal(instanciaDe(s, "2026-12").monto, 111000);
+});
+
+test("recurrente: el impago de un mes pasa al siguiente en rojo, junto con el gasto nuevo de ese mes", () => {
+  const s = conOcurrencia(serieBase(), "2026-10", { estado: "pagado", pagos: [] }); // octubre pagado
+  const gastos = expandirRecurrentes([s], HOY);
+  const diciembre = gastosDelMes(gastos, "2026-12", HOY).map((x) => [x.gasto.mes, x.arrastradoDe]);
+  assert.deepEqual(diciembre, [["2026-11", "2026-11"], ["2026-12", null]]); // noviembre impago pasa; octubre pagado no
+  assert.equal(estadoEfectivo(gastos[1], HOY), "vencido");
+});
 
 test("rubros: las 10 opciones con sus nombres y validación", () => {
   assert.deepEqual(RUBROS.map(etiquetaRubro), [

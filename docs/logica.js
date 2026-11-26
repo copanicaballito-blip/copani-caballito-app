@@ -233,6 +233,150 @@ export function totalesDelMes(items, hoy) {
 
 // ---- Formato y validación ------------------------------------------------------------------
 
+// ---- Gastos recurrentes --------------------------------------------------------------------
+// Un gasto recurrente ("serie") se repite todos los meses y se guarda UNA sola vez:
+//   desde / hasta: primer y último mes ("aaaa-mm"); sin `hasta` sigue indefinidamente.
+//   cambios: la plantilla (descripción, monto, día, rubro, forma de pago, estado inicial) vigente desde cada
+//            mes en adelante. Editar un mes agrega un cambio que vale para ese mes y los siguientes.
+//   meses: lo propio de cada mes: `estado` y `pagos`. Si el mes ya estaba pagado cuando se cambió la
+//          plantilla de un mes anterior, guarda además `datos` (copia de lo que se pagó): el pasado no se reescribe.
+// Los gastos de cada mes ("instancias") se CALCULAN a partir de la serie, no se guardan: así no se pueden duplicar.
+
+/** Estados con los que puede arrancar un mes nuevo de un gasto recurrente. */
+export const ESTADOS_INICIALES = ["estimado", "a_pagar"];
+
+const pad2 = (n) => String(n).padStart(2, "0");
+
+/** "2026-12" -> "2027-01" */
+export function siguienteMes(clave) {
+  return claveDeIndice(indiceMes(clave) + 1);
+}
+
+export function diasDelMes(clave) {
+  const [a, m] = clave.split("-").map(Number);
+  return new Date(Date.UTC(a, m, 0)).getUTCDate();
+}
+
+/** Fecha del día `dia` en ese mes; si el mes es más corto (ej. 31 en febrero) se usa su último día. */
+export function fechaDeMes(clave, dia) {
+  return `${clave}-${pad2(Math.min(dia, diasDelMes(clave)))}`;
+}
+
+/** Plantilla vigente en un mes: la última cuyo `desde` no sea posterior a ese mes. */
+export function plantillaDe(serie, mes) {
+  let elegida = serie.cambios[0];
+  for (const cambio of serie.cambios) if (cambio.desde <= mes) elegida = cambio;
+  return elegida;
+}
+
+/** El gasto de un mes de la serie, con la forma de un gasto común (más `serieId`, `mes` y `recurrente`). */
+export function instanciaDe(serie, mes) {
+  const ocurrencia = serie.meses?.[mes];
+  const vigente = plantillaDe(serie, mes);
+  const datos = ocurrencia?.datos ?? vigente;
+  const gasto = {
+    id: `${serie.id}~${mes}`,
+    serieId: serie.id,
+    mes,
+    recurrente: true,
+    descripcion: datos.descripcion,
+    monto: datos.monto,
+    fechaPago: fechaDeMes(mes, datos.dia),
+    estado: ocurrencia?.estado ?? vigente.estado ?? "estimado",
+    pagos: ocurrencia?.pagos ?? [],
+  };
+  if (datos.rubro) gasto.rubro = datos.rubro;
+  if (datos.formaPago) gasto.formaPago = datos.formaPago;
+  return gasto;
+}
+
+/** Meses de la serie hasta `tope` (o hasta su `hasta`, si termina antes). */
+export function mesesDeSerie(serie, tope) {
+  const ultimo = serie.hasta && serie.hasta < tope ? serie.hasta : tope;
+  const lista = [];
+  for (let i = indiceMes(serie.desde); i <= indiceMes(ultimo); i++) lista.push(claveDeIndice(i));
+  return lista;
+}
+
+/**
+ * Todos los gastos que generan las series: desde su primer mes hasta el mes siguiente al actual
+ * (así siempre se ve el mes que viene ya armado). Una serie que arranca más adelante muestra al menos su primer mes.
+ */
+export function expandirRecurrentes(series, hoy) {
+  const horizonte = siguienteMes(mesDe(hoy));
+  const gastos = [];
+  for (const serie of series) {
+    const tope = serie.desde > horizonte ? serie.desde : horizonte;
+    for (const mes of mesesDeSerie(serie, tope)) gastos.push(instanciaDe(serie, mes));
+  }
+  return gastos;
+}
+
+/** Crea la serie a partir de un gasto: ese gasto es el primer mes y su día de pago se repite cada mes. */
+export function crearSerie(gasto) {
+  const mes = mesDe(gasto.fechaPago);
+  const plantilla = {
+    desde: mes,
+    descripcion: gasto.descripcion,
+    monto: gasto.monto,
+    dia: Number(gasto.fechaPago.slice(8, 10)),
+    estado: ESTADOS_INICIALES.includes(gasto.estado) ? gasto.estado : "a_pagar",
+  };
+  if (gasto.rubro) plantilla.rubro = gasto.rubro;
+  if (gasto.formaPago) plantilla.formaPago = gasto.formaPago;
+  return { desde: mes, cambios: [plantilla], meses: { [mes]: { estado: gasto.estado, pagos: gasto.pagos ?? [] } } };
+}
+
+/** Datos de la plantilla sin sus campos de control (para guardarlos como copia en un mes pagado). */
+function datosDe(plantilla) {
+  const { desde, estado, ...datos } = plantilla;
+  return datos;
+}
+
+/**
+ * Edita un mes de la serie: los datos nuevos valen para ESE mes y los SIGUIENTES (los anteriores no cambian).
+ * Los meses siguientes que ya estaban pagados conservan lo que se pagó (se les guarda una copia de los datos).
+ * `nuevo` trae descripcion, monto, fechaPago (de ese mes), rubro, formaPago y el estado de ese mes.
+ */
+export function aplicarEdicion(serie, mes, nuevo) {
+  const anterior = plantillaDe(serie, mes);
+  const plantilla = {
+    desde: mes,
+    descripcion: nuevo.descripcion,
+    monto: nuevo.monto,
+    dia: Number(nuevo.fechaPago.slice(8, 10)),
+    estado: ESTADOS_INICIALES.includes(nuevo.estado) ? nuevo.estado : anterior.estado ?? "a_pagar",
+  };
+  if (nuevo.rubro) plantilla.rubro = nuevo.rubro;
+  if (nuevo.formaPago) plantilla.formaPago = nuevo.formaPago;
+
+  const meses = {};
+  for (const [m, ocurrencia] of Object.entries(serie.meses ?? {})) {
+    meses[m] = ocurrencia;
+    if (m > mes && ocurrencia.estado === "pagado" && !ocurrencia.datos) {
+      meses[m] = { ...ocurrencia, datos: datosDe(plantillaDe(serie, m)) };
+    }
+  }
+  const actual = { pagos: [], ...(meses[mes] ?? {}), estado: nuevo.estado };
+  delete actual.datos;
+  if (nuevo.estado === "pagado") actual.datos = datosDe(plantilla);
+  meses[mes] = actual;
+
+  return { ...serie, cambios: [...serie.cambios.filter((c) => c.desde < mes), plantilla], meses };
+}
+
+/** Guarda el estado y los pagos de un mes. Si deja de estar pagado, vuelve a seguir la plantilla. */
+export function conOcurrencia(serie, mes, { estado, pagos }) {
+  const ocurrencia = { ...(serie.meses?.[mes] ?? {}), estado, pagos };
+  if (estado !== "pagado") delete ocurrencia.datos;
+  return { ...serie, meses: { ...serie.meses, [mes]: ocurrencia } };
+}
+
+/** Termina la serie: ese mes es el último; los siguientes dejan de aparecer. */
+export function dejarDeRepetir(serie, mes) {
+  return { ...serie, hasta: mes };
+}
+
 // ---- Búsqueda y filtro por rubro -----------------------------------------------------------
 
 /** Minúsculas y sin tildes: "Córdoba" -> "cordoba". */

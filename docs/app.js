@@ -3,7 +3,8 @@ import {
   ESTADOS, ETIQUETAS, FORMAS_PAGO, ETIQUETAS_FORMA, etiquetaForma,
   rubrosOrdenados, ETIQUETAS_RUBRO, etiquetaRubro, SIN_RUBRO, coincideBusqueda, coincideRubro,
   hoyISO, estadoEfectivo, ordenar, saldoDe, pagadoDe,
-  mesDe, nombreMes, mesesDisponibles, gastosDelMes, totalesDelMes,
+  mesDe, nombreMes, mesesDisponibles, gastosDelMes, totalesDelMes, diasDelMes,
+  expandirRecurrentes, crearSerie, aplicarEdicion, conOcurrencia, dejarDeRepetir,
   agregarPago, quitarPago, textoVencimiento, formatoPesos, formatoFecha,
   parseMonto, validarGasto, validarPago,
 } from "./logica.js";
@@ -19,9 +20,12 @@ const formGasto = $("#form-gasto");
 
 let datos = null;
 let usuario = null;
-let gastos = [];
+let unicos = []; // gastos de una sola vez (colección "gastos")
+let series = []; // gastos recurrentes (colección "recurrentes"), una serie por gasto
+let gastos = []; // lo que se muestra: los de una sola vez + los meses que generan las series
 let cargando = false;
 let errorNube = null;
+let errorRecurrentes = null; // no es grave: si falla, igual se ven los gastos comunes
 let desuscribir = null;
 let filtro = "todos"; // filtro por estado
 let mesSel = mesDe(hoyISO()); // mes elegido ("aaaa-mm") o "todos"; empieza en el mes actual
@@ -56,13 +60,15 @@ async function iniciar() {
     usuario = u;
     if (desuscribir) desuscribir();
     desuscribir = null;
-    gastos = [];
+    unicos = [];
+    series = [];
     errorNube = null;
+    errorRecurrentes = null;
     cargando = Boolean(u);
     if (u) {
-      desuscribir = datos.escucharGastos(
+      const dejarDeEscucharGastos = datos.escucharGastos(
         (lista) => {
-          gastos = lista;
+          unicos = lista;
           cargando = false;
           render();
         },
@@ -73,6 +79,22 @@ async function iniciar() {
           render();
         },
       );
+      const dejarDeEscucharRecurrentes = datos.escucharRecurrentes(
+        (lista) => {
+          series = lista;
+          errorRecurrentes = null;
+          render();
+        },
+        (e) => {
+          console.error(e);
+          errorRecurrentes = e;
+          render();
+        },
+      );
+      desuscribir = () => {
+        dejarDeEscucharGastos();
+        dejarDeEscucharRecurrentes();
+      };
     }
     render();
   });
@@ -80,12 +102,26 @@ async function iniciar() {
 
 // ---- Pantallas -----------------------------------------------------------------------------
 
+/** Junta los gastos de una sola vez con los meses que generan los gastos recurrentes. */
+function mezclar() {
+  gastos = [...unicos, ...expandirRecurrentes(series, hoyISO())];
+}
+
+function textoErrorRecurrentes() {
+  return errorRecurrentes?.code === "permission-denied"
+    ? "Los gastos recurrentes todavía no están habilitados: falta actualizar las reglas de Firebase (Firestore → Reglas). Los demás gastos funcionan normal."
+    : `No se pudieron cargar los gastos recurrentes (${errorRecurrentes?.code ?? errorRecurrentes?.message ?? "error desconocido"}).`;
+}
+
 function render() {
+  mezclar();
   $("#btn-salir").hidden = !(usuario && datos.modo === "nube");
   $("#btn-nuevo").hidden = !usuario || Boolean(errorNube);
   const hayLista = Boolean(usuario) && !errorNube;
   $("#btn-buscar").hidden = !hayLista;
   $("#buscador").hidden = !(hayLista && buscando);
+  $("#aviso-recurrentes").hidden = !(hayLista && errorRecurrentes);
+  if (errorRecurrentes) $("#aviso-recurrentes").textContent = textoErrorRecurrentes();
   if (!usuario) return pintarLogin();
   if (errorNube) return pintarError();
   if (cargando) {
@@ -273,7 +309,11 @@ function pintarLista() {
 function tarjeta(g, hoy, arrastradoDe) {
   const ef = estadoEfectivo(g, hoy);
   const rel = textoVencimiento(g, hoy);
-  const etiquetas = [g.rubro && etiquetaRubro(g.rubro), g.formaPago && etiquetaForma(g.formaPago)].filter(Boolean);
+  const etiquetas = [
+    g.rubro && etiquetaRubro(g.rubro),
+    g.formaPago && etiquetaForma(g.formaPago),
+    g.recurrente && "↻ Mensual",
+  ].filter(Boolean);
   const forma = etiquetas.length ? `<div class="forma">${etiquetas.map(esc).join(" · ")}</div>` : "";
   const parcial = (g.pagos ?? []).length
     ? `<div class="parcial">Pagado ${formatoPesos(pagadoDe(g))} · Saldo ${formatoPesos(saldoDe(g))}</div>`
@@ -345,6 +385,8 @@ function pintarDetalle() {
   const ef = estadoEfectivo(g, hoy);
   const rel = textoVencimiento(g, hoy);
   const pagos = g.pagos ?? [];
+  const serie = g.recurrente ? series.find((s) => s.id === g.serieId) : null;
+  const seguiraRepitiendo = g.recurrente && (!serie?.hasta || serie.hasta > g.mes);
 
   // Si llega un cambio de otro celular mientras se escribe un pago, no se pierde lo escrito.
   const montoEscrito = $("#pago-monto")?.value ?? "";
@@ -363,6 +405,9 @@ function pintarDetalle() {
       <div><dt>Rubro</dt><dd>${esc(etiquetaRubro(g.rubro))}</dd></div>
       <div><dt>Forma de pago</dt><dd>${esc(etiquetaForma(g.formaPago))}</dd></div>
     </dl>
+    ${g.recurrente
+      ? `<p class="nota repite">↻ Se repite todos los meses${serie?.hasta ? ` · termina en ${esc(nombreMes(serie.hasta))}` : ""}. Si lo editás, el cambio vale para este mes y los siguientes.</p>`
+      : ""}
 
     <h3>Cambiar estado</h3>
     <div class="estados fila-botones">
@@ -384,7 +429,8 @@ function pintarDetalle() {
     <p class="error" id="error-pago" role="alert"></p>
 
     <div class="acciones">
-      <button type="button" class="peligro" data-accion="eliminar">Eliminar</button>
+      <button type="button" class="peligro" data-accion="eliminar">${g.recurrente ? "Eliminar todo" : "Eliminar"}</button>
+      ${seguiraRepitiendo ? `<button type="button" data-accion="dejar">Dejar de repetir</button>` : ""}
       <button type="button" data-accion="editar">Editar</button>
       <button type="button" data-accion="cerrar">Cerrar</button>
     </div>`;
@@ -422,9 +468,19 @@ dlgDetalle.addEventListener("click", (ev) => {
     cerrarDetalle();
     abrirFormulario(g);
   }
-  if (accion === "eliminar" && confirm(`¿Eliminar “${g.descripcion}”? No se puede deshacer.`)) {
-    cerrarDetalle();
-    datos.borrar(g.id).catch(falloAlGuardar);
+  if (accion === "dejar") {
+    const serie = series.find((s) => s.id === g.serieId);
+    const texto = `¿Dejar de repetir “${g.descripcion}” después de ${nombreMes(g.mes)}? Los meses siguientes dejan de aparecer; este mes y los anteriores se conservan.`;
+    if (serie && confirm(texto)) datos.guardarSerie(dejarDeRepetir(serie, g.mes)).catch(falloAlGuardar);
+  }
+  if (accion === "eliminar") {
+    const texto = g.recurrente
+      ? `¿Eliminar “${g.descripcion}” y TODOS sus meses (anteriores y siguientes)? No se puede deshacer. Si solo querés que deje de repetirse, usá “Dejar de repetir”.`
+      : `¿Eliminar “${g.descripcion}”? No se puede deshacer.`;
+    if (confirm(texto)) {
+      cerrarDetalle();
+      (g.recurrente ? datos.borrarSerie(g.serieId) : datos.borrar(g.id)).catch(falloAlGuardar);
+    }
   }
 });
 
@@ -447,8 +503,15 @@ dlgDetalle.addEventListener("submit", (ev) => {
 
 function abrirFormulario(gasto) {
   editando = gasto;
-  $("#form-titulo").textContent = gasto ? "Editar gasto" : "Nuevo gasto";
+  const esRecurrente = Boolean(gasto?.recurrente);
+  $("#form-titulo").textContent = gasto ? (esRecurrente ? "Editar gasto recurrente" : "Editar gasto") : "Nuevo gasto";
   $("#error-gasto").textContent = "";
+  // En un gasto que ya se repite, la fecha solo puede cambiar de día dentro de su mes, y la casilla queda marcada.
+  formGasto.recurrente.checked = esRecurrente;
+  formGasto.recurrente.disabled = esRecurrente;
+  $("#nota-recurrente").hidden = !esRecurrente;
+  formGasto.fechaPago.min = esRecurrente ? `${gasto.mes}-01` : "";
+  formGasto.fechaPago.max = esRecurrente ? `${gasto.mes}-${String(diasDelMes(gasto.mes)).padStart(2, "0")}` : "";
   formGasto.descripcion.value = gasto?.descripcion ?? "";
   formGasto.monto.value = gasto ? String(gasto.monto) : "";
   formGasto.fechaPago.value = gasto?.fechaPago ?? hoyISO();
@@ -482,20 +545,56 @@ formGasto.addEventListener("submit", (ev) => {
     $("#error-gasto").textContent = error;
     return;
   }
+  if (editando?.recurrente) return guardarEdicionRecurrente(nuevo);
+
   const gasto = editando ? { ...editando, ...nuevo } : { ...nuevo, pagos: [] };
   if (!gasto.formaPago) delete gasto.formaPago; // "Sin definir": el campo no se guarda
   if (!gasto.rubro) delete gasto.rubro; // "Sin rubro": el campo no se guarda
   // Se muestra el mes del gasto guardado para que se vea enseguida (antes de guardar: la lista se redibuja al guardar).
   if (mesSel !== "todos") mesSel = mesDe(gasto.fechaPago);
-  guardar(gasto);
+  if (formGasto.recurrente.checked) {
+    // "Se repite todos los meses": este gasto pasa a ser el primer mes de una serie nueva.
+    const serie = crearSerie(gasto);
+    const pedido = editando ? datos.convertirEnRecurrente(editando.id, serie) : datos.guardarSerie(serie);
+    pedido.catch(falloAlGuardar);
+  } else {
+    guardar(gasto);
+  }
   dlgForm.close();
 });
+
+/** Edita un mes de un gasto recurrente: el cambio vale para ese mes y los siguientes. */
+function guardarEdicionRecurrente(nuevo) {
+  const g = editando;
+  if (mesDe(nuevo.fechaPago) !== g.mes) {
+    $("#error-gasto").textContent = `En un gasto recurrente la fecha tiene que ser de ${nombreMes(g.mes)}: solo se puede cambiar el día.`;
+    return;
+  }
+  const serie = series.find((s) => s.id === g.serieId);
+  if (!serie) {
+    aviso("No se encontró el gasto recurrente. Recargá la página.");
+    dlgForm.close();
+    return;
+  }
+  if (mesSel !== "todos") mesSel = g.mes;
+  datos.guardarSerie(aplicarEdicion(serie, g.mes, nuevo)).catch(falloAlGuardar);
+  dlgForm.close();
+}
 
 // ---- Varios --------------------------------------------------------------------------------
 
 function guardar(gasto) {
   // No se espera la respuesta del servidor: la lista se actualiza sola al llegar el cambio.
+  if (gasto.recurrente) return guardarMesRecurrente(gasto);
   datos.guardar(gasto).catch(falloAlGuardar);
+}
+
+/** Cambio de estado o de pagos en un mes de un gasto recurrente: solo toca ese mes. */
+function guardarMesRecurrente(g) {
+  const serie = series.find((s) => s.id === g.serieId);
+  if (!serie) return;
+  const nueva = conOcurrencia(serie, g.mes, { estado: g.estado, pagos: g.pagos });
+  datos.guardarOcurrencia(serie.id, g.mes, nueva.meses[g.mes]).catch(falloAlGuardar);
 }
 
 function falloAlGuardar(e) {

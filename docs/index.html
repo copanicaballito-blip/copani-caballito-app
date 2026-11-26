@@ -28,6 +28,8 @@
     Modo demo: los datos son de ejemplo y quedan solo en este navegador.
   </div>
 
+  <div id="aviso-recurrentes" class="aviso-demo aviso-error" role="alert" hidden></div>
+
   <!-- Búsqueda (lupa): queda fuera de #contenido para no perder el foco mientras se escribe -->
   <div id="buscador" class="buscador" role="search" hidden>
     <input id="buscar" type="search" placeholder="Buscar por descripción, rubro, monto…" autocomplete="off" enterkeyhint="search" aria-label="Buscar gastos">
@@ -69,6 +71,8 @@
         <label class="opcion estado-a_pagar"><input type="radio" name="estado" value="a_pagar"><span>A pagar</span></label>
         <label class="opcion estado-pagado"><input type="radio" name="estado" value="pagado"><span>Pagado</span></label>
       </fieldset>
+      <label class="check"><input type="checkbox" name="recurrente"><span>Se repite todos los meses</span></label>
+      <p id="nota-recurrente" class="nota" hidden>Este gasto ya se repite todos los meses. Los cambios valen para este mes y los siguientes; los meses anteriores no cambian.</p>
       <p id="error-gasto" class="error" role="alert"></p>
       <div class="acciones">
         <button type="button" id="form-cancelar">Cancelar</button>

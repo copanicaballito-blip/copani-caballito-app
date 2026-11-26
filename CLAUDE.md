@@ -13,6 +13,8 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   Débito Automático - Galicia, Efectivo.
 - Filtro por mes: se elige el mes y se ve lo que vence ese mes. Los impagos de meses anteriores
   pasan al mes siguiente, en rojo, hasta que se pagan.
+- Gastos recurrentes (Alquiler, Empleados, Expensas…): se repiten todos los meses con los mismos datos; al editar
+  un mes, el cambio vale para ese mes y los siguientes (los anteriores no cambian).
 - Rubro de cada gasto (opcional): Productos, Servicios, Alquiler, Compra insumos, Tarjeta, Gastos Bancarios,
   Impuesto, Socios, Préstamos, Empleados.
 - Lupa en la barra: busca por descripción, rubro, forma de pago o monto, y filtra por rubro.
@@ -22,6 +24,26 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   y listó cuatro; se interpretó así. Si lo quiere elegible a mano, cambiar `estadoEfectivo` en `docs/logica.js`.
 - Estado guardado: `estimado` | `a_pagar` | `pagado`. "Pagado" a mano cuenta el monto completo;
   un pago parcial que completa el monto pasa el gasto a "Pagado" solo (`agregarPago`).
+- Gastos recurrentes (`logica.js`, sección "Gastos recurrentes", con tests; colección `recurrentes`): una SERIE por
+  gasto, guardada una sola vez: `desde`/`hasta` (meses "aaaa-mm"), `cambios` (plantilla: descripcion, monto,
+  `dia`, rubro, formaPago, `estado` inicial, vigente desde cada mes en adelante) y `meses` (por mes: `estado`,
+  `pagos` y, si estaba pagado cuando se cambió la plantilla de un mes anterior, `datos` = copia de lo que se pagó).
+  Los gastos de cada mes (instancias, id `<serieId>~<aaaa-mm>`, con `recurrente: true`, `serieId`, `mes`) se
+  CALCULAN (`expandirRecurrentes`) desde el primer mes hasta el mes siguiente al actual: no se guardan, así no
+  hay copias duplicadas ni hace falta ningún proceso que las cree. `app.js` junta `unicos` + instancias en `gastos`
+  (`mezclar()`), por eso mes, arrastre, lupa, rubros y totales funcionan igual para los dos tipos.
+  Reglas del producto: (1) editar un mes = `aplicarEdicion`: agrega una plantilla desde ese mes y BORRA las
+  posteriores ("y así sucesivamente"); los meses siguientes ya pagados guardan `datos` para no reescribir lo pagado;
+  (2) estado y pagos son de cada mes (`conOcurrencia`; en la nube `updateDoc` con `FieldPath("meses", mes)`, para no
+  pisar lo que otra persona cambie en otro mes); un mes que vuelve de Pagado a impago vuelve a seguir la plantilla;
+  (3) cada mes nuevo nace con el estado inicial de la plantilla (Estimado o A pagar; "Pagado" no es inicial);
+  (4) en la edición de un recurrente la fecha solo puede cambiar de día dentro de su mes; un día 31 cae el último
+  día de los meses cortos; (5) "Dejar de repetir" fija `hasta` en ese mes; "Eliminar todo" borra la serie entera
+  (todos los meses); no hay "eliminar solo un mes" ni "editar solo este mes" (no se pidió: agregarlo si hace falta);
+  (6) un gasto común se convierte en recurrente tildando "Se repite todos los meses" al editarlo
+  (`convertirEnRecurrente`: `writeBatch` que crea la serie y borra el gasto), y no se puede revertir desde la app.
+  Si la colección `recurrentes` deniega (reglas sin actualizar), NO es un error fatal: se muestra un aviso rojo y los
+  gastos comunes siguen funcionando (`errorRecurrentes` vs `errorNube`).
 - Forma de pago: campo `formaPago` del GASTO (claves `manual_mp`, `debito_mp`, `manual_galicia`,
   `debito_galicia`, `efectivo`; ver `FORMAS_PAGO` en `docs/logica.js`). Es opcional: "Sin definir" = el campo
   no se guarda. Se interpretó "los pagos" del dueño como los gastos por pagar; los pagos parciales no
