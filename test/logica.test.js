@@ -6,7 +6,7 @@ import {
   FORMAS_PAGO, etiquetaForma, mesDe, nombreMes, mesesDisponibles, gastosDelMes, totalesDelMes,
   RUBROS, etiquetaRubro, SIN_RUBRO, coincideBusqueda, coincideRubro, rubrosOrdenados,
   siguienteMes, diasDelMes, fechaDeMes, instanciaDe, expandirRecurrentes, crearSerie, aplicarEdicion,
-  conOcurrencia, dejarDeRepetir,
+  conOcurrencia, dejarDeRepetir, venceHoy,
 } from "../docs/logica.js";
 
 const HOY = "2026-12-10";
@@ -94,6 +94,16 @@ test("orden: no pagados por fecha, pagados al final", () => {
   const c = gasto({ descripcion: "C", estado: "pagado", fechaPago: "2026-12-01" });
   const d = gasto({ descripcion: "D", estado: "pagado", fechaPago: "2026-12-05" });
   assert.deepEqual(ordenar([a, c, d, b]).map((g) => g.descripcion), ["B", "A", "D", "C"]);
+});
+
+test("vence hoy: solo lo que vence hoy y todavía no está pagado", () => {
+  assert.equal(venceHoy(gasto({ fechaPago: HOY }), HOY), true);
+  assert.equal(venceHoy(gasto({ fechaPago: HOY, estado: "estimado" }), HOY), true);
+  assert.equal(venceHoy(gasto({ fechaPago: HOY, pagos: [{ fecha: HOY, monto: 1000 }] }), HOY), true); // con pago parcial sigue pendiente
+  assert.equal(venceHoy(gasto({ fechaPago: HOY, estado: "pagado" }), HOY), false); // ya pagado: no se resalta
+  assert.equal(venceHoy(gasto({ fechaPago: "2026-12-09" }), HOY), false); // ayer (vencido)
+  assert.equal(venceHoy(gasto({ fechaPago: "2026-12-11" }), HOY), false); // mañana
+  assert.equal(venceHoy(gasto({ fechaPago: "2026-11-10" }), HOY), false); // mismo día de otro mes
 });
 
 test("textos de vencimiento", () => {

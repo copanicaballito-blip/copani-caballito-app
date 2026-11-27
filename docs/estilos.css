@@ -96,6 +96,16 @@ main { max-width: 640px; margin: 0 auto; padding: 16px; }
   border: 1px solid var(--borde); border-left-width: 8px; border-radius: 12px; padding: 12px 14px;
   display: grid; gap: 4px;
 }
+/* Los gastos que vencen HOY (y siguen sin pagar) se resaltan con un celeste claro; el resto queda en blanco.
+   El borde izquierdo conserva el color del estado. El texto "Vence hoy" también lo dice, no solo el color. */
+.gasto.vence-hoy {
+  background: #e6f0ff;
+  border-top-color: #b7d0f5;
+  border-right-color: #b7d0f5;
+  border-bottom-color: #b7d0f5;
+}
+.gasto.vence-hoy .fecha { color: #17407f; font-weight: 700; }
+
 .gasto.estado-estimado { border-left-color: var(--estimado); }
 .gasto.estado-a_pagar { border-left-color: var(--a_pagar); }
 .gasto.estado-pagado { border-left-color: var(--pagado); }

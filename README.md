@@ -35,6 +35,11 @@ mismos datos. El estado (Estimado / A pagar / Pagado) y los pagos parciales son 
 - **Dejar de repetir:** este mes y los anteriores se conservan; desde el mes siguiente ya no aparece.
 - **Eliminar todo:** borra el gasto recurrente completo, con todos sus meses.
 
+## Gastos de hoy
+
+Las tarjetas de los gastos que **vencen hoy** y todavía no están pagos se ven en **celeste claro** (con "Vence hoy" en
+negrita). Los vencidos y los que vencen otro día quedan en blanco.
+
 ## Filtro por mes
 
 Arriba de la lista se elige el mes (o **Todos los meses**). Se muestra lo que **vence ese mes**. Los gastos

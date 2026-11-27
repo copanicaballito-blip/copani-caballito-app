@@ -140,6 +140,11 @@ export function textoVencimiento(gasto, hoy) {
   return `Vence en ${n} días`;
 }
 
+/** ¿Vence hoy y todavía hay que pagarlo? (Uno de hoy que ya está pagado no se resalta.) */
+export function venceHoy(gasto, hoy) {
+  return gasto.fechaPago === hoy && !estaPagado(gasto);
+}
+
 export function totales(gastos, hoy) {
   const r = { pagado: 0, saldo: 0, saldoVencido: 0, cantidadVencidos: 0 };
   for (const g of gastos) {

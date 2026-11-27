@@ -6,7 +6,7 @@ import {
   mesDe, nombreMes, mesesDisponibles, gastosDelMes, totalesDelMes, diasDelMes,
   expandirRecurrentes, crearSerie, aplicarEdicion, conOcurrencia, dejarDeRepetir, filasDelMes,
   agregarPago, quitarPago, textoVencimiento, formatoPesos, formatoFecha,
-  parseMonto, validarGasto, validarPago,
+  parseMonto, validarGasto, validarPago, venceHoy,
 } from "./logica.js";
 import { crearReporteXlsx, nombreArchivoReporte, fechaCorta } from "./reporte.js";
 import { TIPO_XLSX } from "./xlsx.js";
@@ -37,6 +37,7 @@ let listoGastos = false;
 let listoRec = false;
 let listoCierres = false;
 let desuscribir = null;
+let diaMostrado = hoyISO(); // día con el que se dibujó la pantalla por última vez (para detectar el cambio de día)
 let filtro = "todos"; // filtro por estado
 let mesSel = mesDe(hoyISO()); // mes elegido ("aaaa-mm") o "todos"; empieza en el mes actual
 let detalleId = null;
@@ -149,6 +150,7 @@ function textoAvisoReglas() {
 }
 
 function render() {
+  diaMostrado = hoyISO();
   mezclar();
   $("#btn-salir").hidden = !(usuario && datos.modo === "nube");
   $("#btn-nuevo").hidden = !usuario || Boolean(errorNube);
@@ -362,7 +364,7 @@ function tarjeta(g, hoy, arrastradoDe) {
     : "";
   return `
     <li>
-      <button type="button" class="gasto estado-${ef}" data-id="${esc(g.id)}">
+      <button type="button" class="gasto estado-${ef}${venceHoy(g, hoy) ? " vence-hoy" : ""}" data-id="${esc(g.id)}">
         <div class="fila"><span class="desc">${esc(g.descripcion)}</span><span class="monto">${formatoPesos(g.monto)}</span></div>
         <div class="fila">
           <span class="fecha">${formatoFecha(g.fechaPago)}${rel ? ` · ${rel}` : ""}</span>
@@ -752,12 +754,19 @@ dlgReportes.addEventListener("click", async (ev) => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && usuario) render();
 });
+let pasadas = 0;
 setInterval(() => {
-  if (usuario && !cargando) {
+  if (!usuario || cargando) return;
+  // Cambió el día (pasó la medianoche con la app abierta): se redibuja para actualizar "Vence hoy", los
+  // vencidos y el resaltado de las tarjetas de hoy.
+  if (hoyISO() !== diaMostrado) return render();
+  // Cada 10 minutos se revisa si hay algún mes terminado para cerrar.
+  pasadas += 1;
+  if (pasadas % 10 === 0) {
     mezclar();
     cerrarMesesTerminados();
   }
-}, 10 * 60 * 1000);
+}, 60 * 1000);
 
 // ---- Varios --------------------------------------------------------------------------------
 

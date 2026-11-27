@@ -20,6 +20,7 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
 - Rubro de cada gasto (opcional): Productos, Servicios, Alquiler, Compra insumos, Tarjeta, Gastos Bancarios,
   Impuesto, Socios, Préstamos, Empleados.
 - Lupa en la barra: busca por descripción, rubro, forma de pago o monto, y filtra por rubro.
+- Las tarjetas de los gastos que vencen HOY (y siguen sin pagar) se resaltan con un celeste claro; el resto queda en blanco.
 
 ## Decisiones
 - "Vencido" NO se elige: se calcula (no pagado + fecha de pago anterior a hoy). El dueño dijo "tres estados"
@@ -95,6 +96,11 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   en meses futuros solo se ve lo que vence ese mes. En "Pagado" del resumen no se cuenta lo arrastrado
   (esos pagos parciales fueron de otro mes). La lista de meses va del más antiguo con gastos hasta el mes
   siguiente al actual (o el último con gastos); al guardar un gasto la vista salta a su mes.
+- Resaltado de hoy (`venceHoy` en `logica.js`, clase CSS `.vence-hoy`, con tests): solo `fechaPago === hoy` y no pagado; un gasto de hoy
+  ya pagado NO se resalta (tampoco dice "Vence hoy"). Aplica por igual a gastos comunes y a meses de gastos recurrentes; los
+  impagos arrastrados de meses anteriores no (su fecha no es hoy). El borde izquierdo conserva el color del estado y el texto
+  "Vence hoy" va en negrita azul (no depende solo del color). Cada minuto `app.js` detecta el cambio de día (`diaMostrado`) y
+  redibuja, para que el resaltado y los textos "Vence hoy"/"Venció ayer" sigan bien si la app queda abierta pasada la medianoche.
 - Montos en pesos enteros, sin decimales. Fechas como texto "aaaa-mm-dd".
 - Sin build ni dependencias: HTML + JS (módulos ES) + CSS en `docs/`. Se publica con GitHub Pages
   (rama `main`, carpeta `/docs`). Se instala desde el navegador (manifest + íconos PNG; sin service worker).
