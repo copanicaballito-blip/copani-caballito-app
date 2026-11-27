@@ -51,6 +51,21 @@ service cloud.firestore {
         && c.filas is list && c.filas.size() <= 1500;
     }
 
+    // Aviso de pago: la app lo crea al registrar un pago; el programa de mails (GitHub Actions, con una cuenta
+    // "robot" que también figura en `autorizado`) lo lee, manda el correo y lo marca como enviado. Después queda
+    // como registro de los pagos (de ahí sale la lista del informe semanal). No se puede borrar.
+    function avisoValido(a) {
+      return a.keys().hasOnly(["tipo", "creadoEn", "descripcion", "fechaPago", "montoGasto", "monto", "saldo", "rubro", "formaPago", "por", "enviado"])
+        && a.tipo == "pago" && a.enviado == false
+        && a.creadoEn is string && a.creadoEn.size() <= 40
+        && a.descripcion is string && a.descripcion.size() <= 120
+        && a.fechaPago is string && a.fechaPago.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+        && a.montoGasto is int && a.monto is int && a.monto > 0 && a.saldo is int && a.saldo >= 0
+        && a.get("rubro", "") is string && a.get("rubro", "").size() <= 40
+        && a.get("formaPago", "") is string && a.get("formaPago", "").size() <= 40
+        && a.get("por", "") is string && a.get("por", "").size() <= 120;
+    }
+
     match /gastos/{id} {
       allow read, delete: if autorizado();
       allow create, update: if autorizado() && gastoValido(request.resource.data);
@@ -64,6 +79,23 @@ service cloud.firestore {
     match /cierres/{mes} {
       allow read: if autorizado();
       allow create: if autorizado() && cierreValido(request.resource.data, mes);
+      allow update, delete: if false;
+    }
+
+    // Avisos de pago. Lo único que se puede cambiar después de crearlos es marcarlos como enviados.
+    match /avisos/{id} {
+      allow read: if autorizado();
+      allow create: if autorizado() && avisoValido(request.resource.data);
+      allow update: if autorizado()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["enviado", "enviadoEn"])
+        && request.resource.data.enviado == true;
+      allow delete: if false;
+    }
+
+    // Marca de "este informe ya se mandó" (semanal-aaaa-mm-dd, mensual-aaaa-mm): evita mandarlo dos veces.
+    match /informes/{id} {
+      allow read: if autorizado();
+      allow create: if autorizado() && request.resource.data.keys().hasOnly(["tipo", "enviadoEn"]);
       allow update, delete: if false;
     }
   }

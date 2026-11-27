@@ -12,6 +12,7 @@ const VERSION_FIREBASE = "12.19.0"; // la misma que usa el formulario web de Lav
 const CLAVE_DEMO = "copani-demo-gastos-v1";
 const CLAVE_DEMO_REC = "copani-demo-recurrentes-v1";
 const CLAVE_DEMO_CIERRES = "copani-demo-cierres-v1";
+const CLAVE_DEMO_AVISOS = "copani-demo-avisos-v1";
 
 export async function crearDatos() {
   return firebaseConfig.apiKey ? crearNube() : crearDemo();
@@ -35,6 +36,7 @@ async function crearNube() {
   const coleccion = fs.collection(db, "gastos");
   const coleccionRec = fs.collection(db, "recurrentes");
   const coleccionCierres = fs.collection(db, "cierres");
+  const coleccionAvisos = fs.collection(db, "avisos");
   const lista = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
   return {
@@ -100,6 +102,11 @@ async function crearNube() {
     guardarCierre(cierre) {
       return fs.setDoc(fs.doc(db, "cierres", cierre.mes), limpio(cierre));
     },
+
+    // Avisos de pago: la app los escribe; un programa externo (GitHub Actions) los lee, manda el mail y los marca.
+    registrarAviso(aviso) {
+      return fs.setDoc(fs.doc(coleccionAvisos), limpio(aviso));
+    },
   };
 }
 
@@ -146,6 +153,8 @@ function crearDemo() {
   // Los ejemplos recurrentes solo aparecen la primera vez (si ya había gastos guardados, no se agregan).
   let series = guardadoRec ? JSON.parse(guardadoRec) : guardadoGastos ? [] : ejemplosRecurrentes();
   let cierres = guardadoCierres ? JSON.parse(guardadoCierres) : [];
+  const guardadoAvisos = leer(CLAVE_DEMO_AVISOS);
+  let avisos = guardadoAvisos ? JSON.parse(guardadoAvisos) : []; // en la demo no se mandan mails: solo se anotan
 
   const oyentes = new Set();
   const oyentesRec = new Set();
@@ -156,6 +165,7 @@ function crearDemo() {
       localStorage.setItem(CLAVE_DEMO, JSON.stringify(gastos));
       localStorage.setItem(CLAVE_DEMO_REC, JSON.stringify(series));
       localStorage.setItem(CLAVE_DEMO_CIERRES, JSON.stringify(cierres));
+      localStorage.setItem(CLAVE_DEMO_AVISOS, JSON.stringify(avisos));
     } catch {
       // sin almacenamiento: los datos de la demo viven solo mientras la página está abierta
     }
@@ -229,6 +239,11 @@ function crearDemo() {
         throw Object.assign(new Error("El mes ya estaba cerrado"), { code: "permission-denied" });
       }
       cierres = [...cierres, copia(cierre)];
+      cambiaron();
+    },
+
+    async registrarAviso(aviso) {
+      avisos = [...avisos, { id: nuevoId("aviso"), ...copia(aviso) }];
       cambiaron();
     },
   };

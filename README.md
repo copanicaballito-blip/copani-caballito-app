@@ -59,6 +59,30 @@ La **lupa** (arriba a la derecha) abre el buscador: se puede escribir parte de l
 la forma de pago o el monto, y filtrar por rubro. La búsqueda respeta el mes elegido; si no hay
 resultados ahí, ofrece buscar en todos los meses.
 
+## Mails automáticos
+
+Llegan a las 3 cuentas del equipo:
+
+| Mail | Cuándo | Qué dice |
+|---|---|---|
+| **Aviso de pago** | Cada pago registrado (pago parcial, "Pagado", gasto cargado como pagado) | Gasto, monto pagado y saldo pendiente. Llega a los **5-15 minutos**, no al segundo (se revisa cada 5 min). |
+| **Cierre de semana** | Viernes 21 hs | Pagos realizados en la semana, pagos vencidos, total pagado y saldo. |
+| **Informe mensual** | Último día del mes, 21 hs | Resumen del mes y el Excel adjunto. |
+
+No hay servidor: los manda GitHub (gratis) con el archivo [`correos.yml`](.github/workflows/correos.yml).
+Hay que prepararlo **una sola vez**:
+
+1. **Reglas de Firebase:** pegar de nuevo [`firebase/firestore.rules`](firebase/firestore.rules) (con los emails reales) y Publicar. Incluye `avisos` e `informes`.
+2. **Cuenta "robot":** Firebase → Authentication → Agregar usuario (puede ser un email inventado, ej. `robot@copani.com`, con una contraseña larga). Agregar ese email a la lista `autorizado()` de las reglas y publicar.
+3. **Cuenta que envía los mails** (por ejemplo un Gmail): activar la *Verificación en 2 pasos* y crear una **contraseña de aplicación** ([ayuda de Google](https://support.google.com/accounts/answer/185833)).
+4. **GitHub → Settings → Secrets and variables → Actions → New repository secret**, cargar:
+   `SMTP_USUARIO` (el Gmail que envía), `SMTP_CLAVE` (la contraseña de aplicación), `DESTINATARIOS` (los 3 emails separados por coma), `ROBOT_EMAIL` y `ROBOT_CLAVE` (la cuenta del paso 2). Si no es Gmail, también `SMTP_SERVIDOR`.
+5. **Fusionar a `main`:** GitHub solo corre los horarios (y muestra el botón de prueba) del archivo que está en la rama principal.
+6. **Probar:** GitHub → Actions → *Correos automáticos* → **Run workflow** → tipo `semanal`, prueba ✔. Llega un mail con `[PRUEBA]`.
+
+Cosas a saber: GitHub puede **atrasar** los horarios unos minutos; si el repositorio pasa **60 días sin cambios**
+desactiva los horarios (se reactivan en Actions → *Enable workflow*); el repositorio tiene que seguir **público**.
+
 ## Instalar en el celular
 
 - **iPhone:** abrir el link en **Safari** → botón Compartir → **Agregar a pantalla de inicio**.
@@ -80,4 +104,4 @@ El link de la app queda en `https://copanicaballito-blip.github.io/copani-caball
 
 ## Para quien desarrolla
 
-Detalles técnicos en [CLAUDE.md](CLAUDE.md). Tests de las reglas: `npm test`.
+Detalles técnicos en [CLAUDE.md](CLAUDE.md). Tests: `npm ci --prefix automatizacion` (una vez) y `npm test`.

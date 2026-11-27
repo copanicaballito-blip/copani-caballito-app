@@ -6,7 +6,7 @@ import {
   mesDe, nombreMes, mesesDisponibles, gastosDelMes, totalesDelMes, diasDelMes,
   expandirRecurrentes, crearSerie, aplicarEdicion, conOcurrencia, dejarDeRepetir, filasDelMes,
   agregarPago, quitarPago, textoVencimiento, formatoPesos, formatoFecha,
-  parseMonto, validarGasto, validarPago, venceHoy,
+  parseMonto, validarGasto, validarPago, venceHoy, avisoDePago, montoAlMarcarPagado,
 } from "./logica.js";
 import { crearReporteXlsx, nombreArchivoReporte, fechaCorta } from "./reporte.js";
 import { TIPO_XLSX } from "./xlsx.js";
@@ -31,6 +31,7 @@ let errorNube = null;
 let errorRecurrentes = null; // no es grave: si falla, igual se ven los gastos comunes
 let cierres = []; // meses ya cerrados (colección "cierres"): copias congeladas de donde sale su Excel
 let errorCierres = null; // no es grave: si falla, se puede descargar el mes en curso pero no se cierran meses
+let errorAvisos = null; // no es grave: si falla, el pago igual se guarda, pero no sale el mail
 // Cada colección avisa cuando llegó su primera lectura. Un mes solo se cierra con las tres completas,
 // para no guardar un cierre al que le falten gastos recurrentes que todavía no cargaron.
 let listoGastos = false;
@@ -77,6 +78,7 @@ async function iniciar() {
     errorNube = null;
     errorRecurrentes = null;
     errorCierres = null;
+    errorAvisos = null;
     listoGastos = listoRec = listoCierres = false;
     cargando = Boolean(u);
     if (u) {
@@ -142,10 +144,11 @@ function textoAvisoReglas() {
   const faltan = [];
   if (errorRecurrentes?.code === "permission-denied") faltan.push("los gastos recurrentes");
   if (errorCierres?.code === "permission-denied") faltan.push("los reportes de meses cerrados");
+  if (errorAvisos?.code === "permission-denied") faltan.push("los avisos de pago por mail");
   if (faltan.length) {
     return `Todavía no están habilitados ${faltan.join(" ni ")}: falta actualizar las reglas de Firebase (Firestore → Reglas). Lo demás funciona normal.`;
   }
-  const otro = errorRecurrentes ?? errorCierres;
+  const otro = errorRecurrentes ?? errorCierres ?? errorAvisos;
   return `No se pudieron cargar algunos datos (${otro?.code ?? otro?.message ?? "error desconocido"}).`;
 }
 
@@ -158,7 +161,7 @@ function render() {
   $("#btn-buscar").hidden = !hayLista;
   $("#btn-reportes").hidden = !hayLista;
   $("#buscador").hidden = !(hayLista && buscando);
-  const conAviso = hayLista && Boolean(errorRecurrentes || errorCierres);
+  const conAviso = hayLista && Boolean(errorRecurrentes || errorCierres || errorAvisos);
   $("#aviso-reglas").hidden = !conAviso;
   if (conAviso) $("#aviso-reglas").textContent = textoAvisoReglas();
   if (!usuario) return pintarLogin();
@@ -498,7 +501,11 @@ dlgDetalle.addEventListener("click", (ev) => {
   if (!g) return;
 
   const estado = ev.target.closest("[data-estado]")?.dataset.estado;
-  if (estado) return guardar({ ...g, estado });
+  if (estado) {
+    // Pasar a "Pagado" es pagar lo que faltaba: queda registrado (mail y informe semanal).
+    if (estado === "pagado" && g.estado !== "pagado") registrarPago(g, montoAlMarcarPagado(g), 0);
+    return guardar({ ...g, estado });
+  }
 
   const quitar = ev.target.closest("[data-quitar]")?.dataset.quitar;
   if (quitar !== undefined) return guardar(quitarPago(g, Number(quitar)));
@@ -537,7 +544,9 @@ dlgDetalle.addEventListener("submit", (ev) => {
     return;
   }
   $("#pago-monto").value = "";
-  guardar(agregarPago(g, pago));
+  const despues = agregarPago(g, pago);
+  registrarPago(g, pago.monto, saldoDe(despues));
+  guardar(despues);
 });
 
 // ---- Alta y edición ------------------------------------------------------------------------
@@ -591,6 +600,8 @@ formGasto.addEventListener("submit", (ev) => {
   const gasto = editando ? { ...editando, ...nuevo } : { ...nuevo, pagos: [] };
   if (!gasto.formaPago) delete gasto.formaPago; // "Sin definir": el campo no se guarda
   if (!gasto.rubro) delete gasto.rubro; // "Sin rubro": el campo no se guarda
+  // Un gasto nuevo cargado como "Pagado", o uno que pasa a "Pagado" al editarlo, es un pago: queda registrado.
+  if (gasto.estado === "pagado" && editando?.estado !== "pagado") registrarPago(gasto, montoAlMarcarPagado(gasto), 0);
   // Se muestra el mes del gasto guardado para que se vea enseguida (antes de guardar: la lista se redibuja al guardar).
   if (mesSel !== "todos") mesSel = mesDe(gasto.fechaPago);
   if (formGasto.recurrente.checked) {
@@ -618,6 +629,9 @@ function guardarEdicionRecurrente(nuevo) {
     return;
   }
   if (mesSel !== "todos") mesSel = g.mes;
+  if (nuevo.estado === "pagado" && g.estado !== "pagado") {
+    registrarPago({ ...g, ...nuevo }, montoAlMarcarPagado({ monto: nuevo.monto, pagos: g.pagos }), 0);
+  }
   datos.guardarSerie(aplicarEdicion(serie, g.mes, nuevo)).catch(falloAlGuardar);
   dlgForm.close();
 }
@@ -782,6 +796,20 @@ function guardarMesRecurrente(g) {
   if (!serie) return;
   const nueva = conOcurrencia(serie, g.mes, { estado: g.estado, pagos: g.pagos });
   datos.guardarOcurrencia(serie.id, g.mes, nueva.meses[g.mes]).catch(falloAlGuardar);
+}
+
+/**
+ * Deja anotado un pago (qué gasto, cuánto se pagó y cuánto saldo queda). De ahí sale el mail de aviso y el informe
+ * semanal. Si no se puede anotar, el pago igual se guarda: solo falta el mail (y se avisa con el cartel rojo).
+ */
+function registrarPago(gasto, monto, saldo) {
+  if (!(monto > 0) || !datos?.registrarAviso) return;
+  const aviso = avisoDePago(gasto, { monto, saldo, ahora: new Date().toISOString(), por: usuario?.email });
+  datos.registrarAviso(aviso).catch((e) => {
+    console.error(e);
+    errorAvisos = e;
+    render();
+  });
 }
 
 function falloAlGuardar(e) {

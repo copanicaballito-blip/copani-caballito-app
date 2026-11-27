@@ -21,6 +21,9 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   Impuesto, Socios, Préstamos, Empleados.
 - Lupa en la barra: busca por descripción, rubro, forma de pago o monto, y filtra por rubro.
 - Las tarjetas de los gastos que vencen HOY (y siguen sin pagar) se resaltan con un celeste claro; el resto queda en blanco.
+- Mails automáticos a las 3 cuentas: (1) aviso de cada pago (gasto, monto pagado, saldo pendiente); (2) cierre de semana
+  todos los viernes 21 hs (pagos realizados, pagos vencidos, total pagado, saldo); (3) informe mensual el último día del
+  mes, con resumen y el Excel adjunto.
 
 ## Decisiones
 - "Vencido" NO se elige: se calcula (no pagado + fecha de pago anterior a hoy). El dueño dijo "tres estados"
@@ -70,6 +73,48 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   descarga directa suele perderse con la app instalada); en el resto, descarga normal. Si la colección `cierres`
   deniega (reglas sin actualizar) NO es fatal: aviso rojo (`#aviso-reglas`), el mes en curso se sigue pudiendo descargar.
   Verificación de los archivos: se abrieron con openpyxl y con LibreOffice (headless) en el entorno de Claude.
+- Mails automáticos (`automatizacion/` + `.github/workflows/correos.yml`; a mano en la consola de GitHub y de Firebase,
+  ver README). ARQUITECTURA: no hay servidor propio. El proyecto usa Firebase Spark y las funciones programadas
+  (`onSchedule`) y las que reaccionan a Firestore exigen el plan Blaze; por eso corre en GitHub Actions (gratis en repos
+  públicos): un programa de Node (`ejecutar.js`) inicia sesión en Firebase como una cuenta "robot" (4º usuario de
+  Authentication, que debe estar en `autorizado()` de las reglas; REST de Identity Toolkit `signInWithPassword` y de
+  Firestore con `Authorization: Bearer <idToken>`, así las reglas también la controlan), lee los datos y manda el mail por
+  SMTP (`nodemailer`; Gmail con "contraseña de aplicación", requiere verificación en 2 pasos).
+  HORARIOS (cron en UTC; Argentina = UTC-3 sin horario de verano): `*/5 * * * *` avisos de pago; `3 0 * * 6` (viernes
+  21:03 AR) semanal; `5 0 * * *` (21:05 AR todos los días) mensual, que SOLO manda si es el último día del mes (o el día 1
+  si se atrasó y no salió). GitHub no garantiza la hora exacta (puede atrasar, sobre todo en horas pico) y 5 min es el mínimo.
+  "INSTANTÁNEO" = revisión cada 5 min: el mail del pago llega en ~5-15 min, no al segundo. Instantáneo de verdad requiere
+  Cloud Functions (plan Blaze, `onDocumentCreated` sobre `avisos`); la colección `avisos` serviría igual.
+  AVISOS (`avisos`): la app (`registrarPago` en `app.js`, `avisoDePago` en `logica.js`) crea un documento por cada pago:
+  pago parcial, botón "Pagado" (monto = lo que faltaba, `montoAlMarcarPagado`), gasto cargado/editado como Pagado y
+  recurrente pasado a Pagado. NO se crea al quitar un pago, al volver a "A pagar", al tocar "Pagado" estando ya pagado ni
+  al editar un gasto ya pagado. Campos: `tipo:"pago", creadoEn (ISO), descripcion, fechaPago, montoGasto, monto, saldo,
+  rubro?, formaPago?, por? (email), enviado:false`. El programa manda el mail y marca `enviado:true, enviadoEn` (única
+  modificación que permiten las reglas; no se borran: son el registro de pagos del informe semanal). Máx. 20 por corrida.
+  Si el mail falla, el aviso queda sin marcar y se reintenta en la próxima corrida (puede duplicarse si falla justo
+  después de enviar y antes de marcar: se prefirió repetir a perder un aviso). Si `avisos` deniega (reglas sin
+  actualizar) NO es fatal: el pago se guarda igual y sale un aviso rojo (`errorAvisos`).
+  SEMANAL: ventana = viernes anterior 21:00 → este viernes 21:00 (hora AR, `ventanaSemanal`). "Pagos realizados" = avisos
+  creados en la ventana; "vencidos" y "saldo" = lo que muestra la pantalla del mes actual (`filasDelMes`, incluye impagos
+  arrastrados). Marca anti-duplicado: documento `informes/semanal-<viernes>` (la crea el programa DESPUÉS de mandar).
+  MENSUAL: arma el Excel en el momento (`crearReporteXlsx`, el mismo de la app) con el estado de ese momento; NO usa la
+  copia congelada de `cierres` (esa la crea la app cuando alguien la abre después de fin de mes). Marca `informes/mensual-<mes>`.
+  PRUEBA: Actions > "Correos automáticos" > Run workflow (tipo + `prueba` = true): manda el mail con "[PRUEBA]", sin marca
+  ni cambios en los avisos. Si faltan los secrets el programa no falla en los horarios (solo avisa); a mano sí falla.
+  SECRETS (GitHub > Settings > Secrets and variables > Actions): `SMTP_USUARIO`, `SMTP_CLAVE`, `DESTINATARIOS` (los 3
+  emails separados por coma), `ROBOT_EMAIL`, `ROBOT_CLAVE`; opcional `SMTP_SERVIDOR` (por defecto smtp.gmail.com, puerto 465).
+  PRIVACIDAD: el repo es público y los logs de Actions también: el programa no escribe descripciones, montos ni emails
+  (los emails y el usuario SMTP se declaran con `::add-mask::`); hay un test que lo verifica.
+  LIMITACIONES CONOCIDAS: (1) GitHub solo ejecuta los horarios del workflow que está en la RAMA POR DEFECTO (`main`), y
+  el botón "Run workflow" (`workflow_dispatch`) tampoco aparece si el archivo no está ahí: mientras `correos.yml` viva
+  solo en `chore/base-del-repo` no sale ningún mail ni se puede probar; (2) en repos públicos GitHub DESACTIVA los horarios tras 60 días sin actividad en el repo (se reactiva a mano
+  en Actions o con cualquier commit); (3) el repo tiene que seguir siendo público: con 5 min de frecuencia un repo privado
+  gastaría los minutos gratis; (4) "pagos realizados" solo cuenta pagos registrados desde que existe esta función; si se
+  quita un pago después, su aviso/mail ya enviado no se borra; (5) si el viernes 21:03 el programa se atrasa, el informe
+  igual sale (corte fijo 21:00), pero un pago registrado entre 21:00 y la corrida cuenta para la semana siguiente.
+  VERIFICADO (con servidores simulados, no con Gmail/Firebase/GitHub reales): `npm test` (incluye `automatizacion/test`:
+  fechas, cliente REST, redacción, SMTP real de `nodemailer` contra un servidor falso, corrida completa) y Playwright
+  (avisos en nube simulada con reglas emuladas y en modo demo).
 - Forma de pago: campo `formaPago` del GASTO (claves `manual_mp`, `debito_mp`, `manual_galicia`,
   `debito_galicia`, `efectivo`; ver `FORMAS_PAGO` en `docs/logica.js`). Es opcional: "Sin definir" = el campo
   no se guarda. Se interpretó "los pagos" del dueño como los gastos por pagar; los pagos parciales no
@@ -133,8 +178,14 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
 - `docs/datos.js`: acceso a datos (modo nube y modo demo, misma interfaz).
 - `docs/reporte.js` y `docs/xlsx.js`: el Excel mensual (diseño del reporte y escritor de archivos .xlsx).
 - `docs/app.js`, `docs/index.html`, `docs/estilos.css`: pantallas.
+- `automatizacion/`: programa de mails (`ejecutar.js` orquesta; `firestore.js` cliente REST; `fechas.js` hora de Argentina y
+  ventanas; `informes.js` datos; `correos.js` redacción; `enviar.js` SMTP). Usa `docs/logica.js` y `docs/reporte.js`. Única
+  dependencia del repo: `nodemailer` (versión exacta en `automatizacion/package.json`; instalar con `npm ci --prefix automatizacion`).
+- `.github/workflows/correos.yml`: horarios y ejecución de los mails. `ci.yml` corre los tests.
 - `firebase/firestore.rules`: reglas (se publican a mano; con emails de ejemplo).
-- `test/logica.test.js`: tests con el runner de Node (`npm test`, Node 22, sin dependencias).
+- `test/*.test.js` y `automatizacion/test/*.test.js`: tests con el runner de Node (`npm test`, Node 22). La app no tiene
+  dependencias; para los de `automatizacion/` hay que haber corrido `npm ci --prefix automatizacion`.
+  `automatizacion/test/servidor-falso.js`: Firebase (login + Firestore REST) y SMTP de mentira, para probar sin red.
 
 ## Comandos
 - Tests: `npm test`
@@ -149,5 +200,10 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   (no llega a Firebase ni a gstatic). El flujo se probó con un Firebase simulado (Playwright, rutas a gstatic).
 - GitHub Pages hoy publica desde la rama `chore/base-del-repo`, carpeta `/docs` (`main` no tiene la app todavía).
   Al fusionar a `main`, cambiar la fuente en Settings > Pages.
+- Mails automáticos, para que empiecen a salir: (a) republicar las reglas (`avisos`, `informes`); (b) crear el usuario robot
+  en Authentication y agregar su email a `autorizado()`; (c) crear la contraseña de aplicación del mail remitente y cargar
+  los 5 secrets en GitHub; (d) fusionar a `main` (los horarios solo corren desde la rama por defecto; falta autorización
+  del dueño para fusionar); (e) probar con Run workflow (semanal, prueba = true). Nada de esto se probó con Gmail,
+  Firebase ni GitHub reales desde el entorno web de Claude.
 - Probar en un iPhone real (instalación desde Safari).
 - Opcional: restringir la API key de Firebase por dominio (referrer) en Google Cloud Console.

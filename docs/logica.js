@@ -412,6 +412,36 @@ export function coincideRubro(gasto, rubro) {
   return gasto.rubro === rubro;
 }
 
+// ---- Avisos de pago ------------------------------------------------------------------------
+// Cada vez que se registra un pago la app deja un "aviso" en la base (colección `avisos`, con su hora). De ahí
+// salen el mail instantáneo de cada pago y la lista de "pagos realizados" del informe semanal.
+
+/** Lo que faltaba pagar de un gasto: el monto que se paga al pasarlo a "Pagado". */
+export function montoAlMarcarPagado(gasto) {
+  return Math.max(0, gasto.monto - totalPagos(gasto));
+}
+
+/**
+ * El aviso de un pago: qué gasto, cuánto se pagó y cuánto saldo queda. `enviado: false` hasta que el
+ * programa de mails lo manda. `ahora` es un texto ISO (ej. "2026-12-01T15:30:00.000Z").
+ */
+export function avisoDePago(gasto, { monto, saldo, ahora, por }) {
+  const aviso = {
+    tipo: "pago",
+    creadoEn: ahora,
+    descripcion: gasto.descripcion,
+    fechaPago: gasto.fechaPago,
+    montoGasto: gasto.monto,
+    monto,
+    saldo,
+    enviado: false,
+  };
+  if (gasto.rubro) aviso.rubro = gasto.rubro;
+  if (gasto.formaPago) aviso.formaPago = gasto.formaPago;
+  if (por) aviso.por = por;
+  return aviso;
+}
+
 // ---- Reporte mensual -----------------------------------------------------------------------
 // Las "filas" de un mes son los gastos que muestra la pantalla de ese mes (los que vencen en él + los impagos
 // arrastrados), ya con su estado calculado. Son datos simples y autosuficientes: se guardan tal cual al cerrar

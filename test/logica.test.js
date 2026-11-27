@@ -6,7 +6,7 @@ import {
   FORMAS_PAGO, etiquetaForma, mesDe, nombreMes, mesesDisponibles, gastosDelMes, totalesDelMes,
   RUBROS, etiquetaRubro, SIN_RUBRO, coincideBusqueda, coincideRubro, rubrosOrdenados,
   siguienteMes, diasDelMes, fechaDeMes, instanciaDe, expandirRecurrentes, crearSerie, aplicarEdicion,
-  conOcurrencia, dejarDeRepetir, venceHoy,
+  conOcurrencia, dejarDeRepetir, venceHoy, montoAlMarcarPagado, avisoDePago,
 } from "../docs/logica.js";
 
 const HOY = "2026-12-10";
@@ -94,6 +94,21 @@ test("orden: no pagados por fecha, pagados al final", () => {
   const c = gasto({ descripcion: "C", estado: "pagado", fechaPago: "2026-12-01" });
   const d = gasto({ descripcion: "D", estado: "pagado", fechaPago: "2026-12-05" });
   assert.deepEqual(ordenar([a, c, d, b]).map((g) => g.descripcion), ["B", "A", "D", "C"]);
+});
+
+test("avisos de pago: monto que se paga al marcar Pagado y contenido del aviso", () => {
+  assert.equal(montoAlMarcarPagado(gasto()), 10000); // sin pagos: el monto completo
+  assert.equal(montoAlMarcarPagado(gasto({ pagos: [{ fecha: HOY, monto: 3000 }, { fecha: HOY, monto: 2000 }] })), 5000); // lo que faltaba
+  assert.equal(montoAlMarcarPagado(gasto({ pagos: [{ fecha: HOY, monto: 12000 }] })), 0); // nunca negativo
+
+  const a = avisoDePago(gasto({ rubro: "alquiler", formaPago: "manual_mp" }), { monto: 4000, saldo: 6000, ahora: "2026-12-10T15:30:00.000Z", por: "ana@ejemplo.com" });
+  assert.deepEqual(a, {
+    tipo: "pago", creadoEn: "2026-12-10T15:30:00.000Z", descripcion: "Alquiler", fechaPago: "2026-12-20",
+    montoGasto: 10000, monto: 4000, saldo: 6000, enviado: false, rubro: "alquiler", formaPago: "manual_mp", por: "ana@ejemplo.com",
+  });
+  const b = avisoDePago(gasto(), { monto: 10000, saldo: 0, ahora: "2026-12-10T15:30:00.000Z" });
+  assert.ok(!("rubro" in b) && !("formaPago" in b) && !("por" in b), "los campos vacíos no se guardan");
+  assert.deepEqual(JSON.parse(JSON.stringify(a)), a); // se puede guardar como JSON
 });
 
 test("vence hoy: solo lo que vence hoy y todavía no está pagado", () => {

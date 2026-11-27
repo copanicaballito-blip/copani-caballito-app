@@ -17,5 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # Reglas de la app (estados, saldos, pagos parciales). No hay dependencias que instalar.
+      # La app no tiene dependencias; solo el programa de mails (automatizacion/) usa `nodemailer`,
+      # y `node --test` también corre sus pruebas.
+      - run: npm ci --prefix automatizacion
+      # Reglas de la app (estados, saldos, pagos parciales) y programa de mails.
       - run: npm test

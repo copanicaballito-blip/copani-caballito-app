@@ -1,0 +1,9 @@
+{
+  "name": "copani-automatizacion",
+  "private": true,
+  "type": "module",
+  "description": "Mails automáticos de Copani Caballito (se ejecuta en GitHub Actions)",
+  "dependencies": {
+    "nodemailer": "10.6.1"
+  }
+}

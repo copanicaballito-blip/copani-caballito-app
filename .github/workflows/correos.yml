@@ -1,0 +1,66 @@
+name: Correos automáticos
+
+# GitHub corre los horarios en UTC (Argentina = UTC-3, sin horario de verano):
+#   viernes 21:03 (Argentina)    = sábado 00:03 UTC  -> informe de cierre de semana
+#   todos los días 21:05 (Arg.)  = 00:05 UTC         -> informe mensual (solo manda si es el último día del mes)
+#   cada 5 minutos               -> aviso de cada pago nuevo (5 minutos es lo mínimo que permite GitHub; con mucho
+#                                   tráfico puede demorar unos minutos más)
+# Los horarios no son al segundo: GitHub puede atrasarlos. Por eso nunca caen justo en punto (hay más demoras ahí).
+#
+# IMPORTANTE: GitHub solo corre los horarios del archivo que está en la rama principal (main).
+# Los datos de acceso (cuenta de correo, contraseñas) están en Settings > Secrets and variables > Actions.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+    - cron: "3 0 * * 6"
+    - cron: "5 0 * * *"
+  workflow_dispatch:
+    inputs:
+      tipo:
+        description: "Qué mandar"
+        type: choice
+        options: [semanal, mensual, avisos]
+        default: semanal
+      prueba:
+        description: "Es una prueba (el mail dice [PRUEBA] y no cuenta como enviado)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# Un envío a la vez de cada tipo, sin cancelar el que está en marcha.
+concurrency:
+  group: correos-${{ github.event.schedule || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  enviar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: America/Argentina/Buenos_Aires
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: automatizacion/package-lock.json
+
+      - name: Instalar el programa de correo
+        run: npm ci --prefix automatizacion
+
+      - name: Enviar
+        run: node automatizacion/ejecutar.js
+        env:
+          PROGRAMACION: ${{ github.event.schedule }}
+          TIPO: ${{ inputs.tipo }}
+          PRUEBA: ${{ inputs.prueba }}
+          SMTP_USUARIO: ${{ secrets.SMTP_USUARIO }}
+          SMTP_CLAVE: ${{ secrets.SMTP_CLAVE }}
+          SMTP_SERVIDOR: ${{ secrets.SMTP_SERVIDOR }}
+          DESTINATARIOS: ${{ secrets.DESTINATARIOS }}
+          ROBOT_EMAIL: ${{ secrets.ROBOT_EMAIL }}
+          ROBOT_CLAVE: ${{ secrets.ROBOT_CLAVE }}
