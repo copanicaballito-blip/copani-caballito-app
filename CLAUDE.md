@@ -101,6 +101,15 @@ Por eso es web y no un APK: el método de Lavanda Suite (APK) solo sirve en Andr
   impagos arrastrados de meses anteriores no (su fecha no es hoy). El borde izquierdo conserva el color del estado y el texto
   "Vence hoy" va en negrita azul (no depende solo del color). Cada minuto `app.js` detecta el cambio de día (`diaMostrado`) y
   redibuja, para que el resaltado y los textos "Vence hoy"/"Venció ayer" sigan bien si la app queda abierta pasada la medianoche.
+- Ícono de la app = el logo de Copani Caballito (PNG cuadrado 1920x1920 de fondo rojo liso #E62822, original en
+  `assets/logo-original.png`, que Pages NO publica). Se generaron con Pillow desde ese original: `docs/logo-180.png`
+  (iPhone, `apple-touch-icon`), `logo-192.png` y `logo-512.png` (logo completo, `purpose: any`) y
+  `logo-maskable-192.png` / `-512.png` (logo escalado al 82 % centrado sobre el mismo rojo, `purpose: maskable`: Android
+  recorta con círculo/cuadrado redondeado y el dibujo original llega al 47 % del ancho desde el centro; con el margen
+  llega al 39 %, dentro de la zona segura del 40 %). `background_color` (pantalla de arranque en Android) = el rojo del
+  logo; `theme_color` sigue marrón porque es el color de la barra de la app. Si se cambia el logo: regenerar los 5 PNG con
+  esos tamaños y el mismo margen, y cambiar los nombres de archivo para evitar que el navegador muestre el ícono viejo en
+  caché. `test/manifiesto.test.js` verifica que cada ícono exista y mida lo que declara.
 - Montos en pesos enteros, sin decimales. Fechas como texto "aaaa-mm-dd".
 - Sin build ni dependencias: HTML + JS (módulos ES) + CSS en `docs/`. Se publica con GitHub Pages
   (rama `main`, carpeta `/docs`). Se instala desde el navegador (manifest + íconos PNG; sin service worker).
